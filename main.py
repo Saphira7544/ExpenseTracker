@@ -20,8 +20,8 @@ def main():
     bank_parser = get_parser(args.bank)
     transactions = bank_parser.parse(args.file)
 
-    for tx in transactions[:20]:
-        print(tx)
+    #for tx in transactions[:20]:
+       # print(tx)
 
 if __name__ == "__main__":
     main()

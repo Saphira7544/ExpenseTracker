@@ -1,5 +1,6 @@
 import argparse
 from parsers.ubs_parser import UBSParser
+from db.db import create_db, insert_transactions
 # from parsers.cgd_parser import CGDParser  # Not implemented yet
 
 def get_parser(bank: str):
@@ -18,10 +19,15 @@ def main():
     args = parser.parse_args()
 
     bank_parser = get_parser(args.bank)
+
+    create_db()
+
     transactions = bank_parser.parse(args.file)
 
-    #for tx in transactions[:20]:
-       # print(tx)
+    insert_transactions(transactions)
+
+    for tx in transactions[:20]:
+        print(tx)
 
 if __name__ == "__main__":
     main()

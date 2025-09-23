@@ -1,6 +1,7 @@
 import pandas as pd
 from datetime import datetime
 import os
+import math
 from typing import List
 from models.transaction import Transaction
 from models.transaction import TransactionType
@@ -26,13 +27,20 @@ class UBSParser(BaseParser):
         def parse_amount_and_type(row):
             debit = row.get("Debit", "")
             credit = row.get("Credit", "")
+
+            # Normalize in case value empty -> NaN
+            debit = "" if pd.isna(debit) else str(debit).strip()
+            credit = "" if pd.isna(credit) else str(credit).strip()
+
             if debit:
                 return float(debit), TransactionType.DEBIT
             elif credit:
                 return float(credit), TransactionType.CREDIT
             return 0.0, TransactionType.NULL
         
-        df[["amount", "transaction_type"]] = df.apply(lambda row: pd.Series(parse_amount_and_type(row)), axis=1)
+        df[["amount", "transaction_type"]] = df.apply(
+                lambda row: pd.Series(parse_amount_and_type(row)), axis=1
+            )        
         df["date"] = pd.to_datetime(df["Value date"], format="%Y-%m-%d", errors="coerce")
         df["currency"] = df["Currency"].fillna("CHF")
         df["description"] = df[["Description1", "Description2", "Description3"]].fillna("").agg(" ".join, axis=1).str.strip()

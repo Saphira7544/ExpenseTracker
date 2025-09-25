@@ -12,13 +12,14 @@ def create_db():
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id TEXT UNIQUE NOT NULL,
             date TEXT NOT NULL,
+            transaction_type TEXT NOT NULL,
             description TEXT,
             amount REAL NOT NULL,
             currency TEXT NOT NULL,
             account TEXT NOT NULL,
-            source_file TEXT NOT NULL,
-            transaction_type TEXT NOT NULL CHECK(transaction_type IN ('debit', 'credit', 'null'))
+            source_file TEXT NOT NULL
         );
         """)
         conn.commit()
@@ -26,18 +27,24 @@ def create_db():
 def insert_transactions(transactions: list[Transaction]):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.executemany("""
-            INSERT INTO transactions (date, description, amount, currency, account, source_file, transaction_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, [
-            (
-                t.date.strftime("%Y-%m-%d") if t.date else None,
-                t.description,
-                t.amount,
-                t.currency,
-                t.account,
-                t.source_file,
-                t.transaction_type.value
-            ) for t in transactions
-        ])
+        for t in transactions:
+            cursor.execute("""
+                INSERT INTO transactions (
+                    transaction_id, date, transaction_type, description, 
+                    amount, currency, account, source_file
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(transaction_id) DO NOTHING;
+            """, 
+                (
+                    t.transactionId,
+                    t.date.isoformat() if t.date else None,
+                    t.transactionType.value,
+                    t.description,
+                    t.amount,
+                    t.currency,
+                    t.account,
+                    t.sourceFile                
+                )
+            )
         conn.commit()

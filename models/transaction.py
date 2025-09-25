@@ -9,10 +9,12 @@ class TransactionType(Enum):
 
 @dataclass
 class Transaction:
+    transactionId: str
+    transactionType: TransactionType
     date: str
     description: str
     amount: float
     currency: str
     account: str
-    source_file: str
-    transaction_type: TransactionType
+    sourceFile: str
+    

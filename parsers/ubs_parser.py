@@ -38,23 +38,27 @@ class UBSParser(BaseParser):
                 return float(credit), TransactionType.CREDIT
             return 0.0, TransactionType.NULL
         
-        df[["amount", "transaction_type"]] = df.apply(
+        df[["amount", "transactionType"]] = df.apply(
                 lambda row: pd.Series(parse_amount_and_type(row)), axis=1
             )        
         df["date"] = pd.to_datetime(df["Value date"], format="%Y-%m-%d", errors="coerce")
         df["currency"] = df["Currency"].fillna("CHF")
         df["description"] = df[["Description1", "Description2", "Description3"]].fillna("").agg(" ".join, axis=1).str.strip()
         df["account"] = "UBS"
-        df["source_file"] = os.path.basename(file_path)
+        df["sourceFile"] = os.path.basename(file_path)
+        df["transactionId"] = df["Transaction no."].str.strip()
+
 
         return [
             Transaction(
+                transactionId=row.transactionId,
+                transactionType=row.transactionType,
                 date=row.date,
                 description=row.description,
                 amount=row.amount,
                 currency=row.currency,
                 account=row.account,
-                source_file=row.source_file,
-                transaction_type=row.transaction_type
-            ) for row in df.itertuples()
+                sourceFile=row.sourceFile               
+            ) 
+            for row in df.itertuples()
         ]

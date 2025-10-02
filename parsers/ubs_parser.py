@@ -1,53 +1,87 @@
 import pandas as pd
-from datetime import datetime
 import os
-import math
 from typing import List
-from models.transaction import Transaction
-from models.transaction import TransactionType
+from models.transaction import Transaction, TransactionType
 from .base_parser import BaseParser
 from utils.file_utils import read_file_lines
 
 
 class UBSParser(BaseParser):
+
+    DEBIT_HEADER = "Trade date"
+    PREPAID_HEADER = "Account number"
+
     def parse(self, file_path: str) -> List[Transaction]:
         lines = read_file_lines(file_path)
-        header_index = next(i for i, line in enumerate(lines) if "Trade date" in line)
 
-        df = pd.read_csv(
-            file_path,
-            sep=";",
-            skiprows=header_index,
-            encoding="utf-8",
-            dtype=str
-        )
+        # Trade date --> UBS Debit Account
+        if any(self.DEBIT_HEADER in line for line in lines):
+            return self._parse_file(
+                file_path,
+                skiprows=self._get_header_index(lines, self.DEBIT_HEADER),
+                date_col="Value date",
+                desc_cols=["Description1", "Description2", "Description3"],
+                account_name="UBS Debit",
+                id_col="Transaction no.",
+            )
+        # Account number --> UBS Prepaid Card
+        elif any(self.PREPAID_HEADER in line for line in lines):
+            return self._parse_file(
+                file_path,
+                skiprows=self._get_header_index(lines, self.PREPAID_HEADER),
+                date_col="Purchase date",
+                desc_cols=["Booking text"],
+                account_name="UBS Prepaid",
+                id_col=None,  # will generate a composite ID
+            )
+        else:
+            raise ValueError(f"Unknown UBS file format: {file_path}")
 
-        df = df.dropna(subset=["Trade date", "Description1"], how="all")
+    def _get_header_index(self, lines: list, header_name: str) -> int:
+        return next(i for i, line in enumerate(lines) if header_name in line)
 
-        def parse_amount_and_type(row):
-            debit = row.get("Debit", "")
-            credit = row.get("Credit", "")
+    def _parse_file(
+        self,
+        file_path: str,
+        skiprows: int,
+        date_col: str,
+        desc_cols: list,
+        account_name: str,
+        id_col: str = None,
+    ) -> List[Transaction]:
+        df = pd.read_csv(file_path, sep=";", skiprows=skiprows, encoding="utf-8", dtype=str)
+        df = df.fillna("")
 
-            # Normalize in case value empty -> NaN
-            debit = "" if pd.isna(debit) else str(debit).strip()
-            credit = "" if pd.isna(credit) else str(credit).strip()
+        # Drop empty rows for debit files
+        if self.DEBIT_HEADER in df.columns:
+            df = df.dropna(subset=[self.DEBIT_HEADER, desc_cols[0]], how="all")
 
-            if debit:
-                return float(debit), TransactionType.DEBIT
-            elif credit:
-                return float(credit), TransactionType.CREDIT
-            return 0.0, TransactionType.NULL
-        
-        df[["amount", "transactionType"]] = df.apply(
-                lambda row: pd.Series(parse_amount_and_type(row)), axis=1
-            )        
-        df["date"] = pd.to_datetime(df["Value date"], format="%Y-%m-%d", errors="coerce")
-        df["currency"] = df["Currency"].fillna("CHF")
-        df["description"] = df[["Description1", "Description2", "Description3"]].fillna("").agg(" ".join, axis=1).str.strip()
-        df["account"] = "UBS"
+        # Amount and transaction type
+        df[["amount", "transactionType"]] = df.apply(lambda row: pd.Series(self._parse_amount(row)), axis=1)
+
+        # Date
+        df["date"] = pd.to_datetime(df[date_col], dayfirst=True, errors="coerce")  # dayfirst=True works for both formats
+
+        # Description
+        # Aggregate if multiple descriptions
+        df["description"] = df[desc_cols].agg(" ".join, axis=1).str.strip() if len(desc_cols) > 1 else df[desc_cols[0]].str.strip()
+
+        df["account"] = account_name
         df["sourceFile"] = os.path.basename(file_path)
-        df["transactionId"] = df["Transaction no."].str.strip()
 
+        # Currency 
+        df["currency"] = df["Currency"].str.strip()
+
+        # Transaction ID
+        if id_col and id_col in df.columns:
+            df["transactionId"] = df[id_col].str.strip()
+        else:
+            # For prepaid, generate composite ID
+            df["transactionId"] = (
+                df.get(self.PREPAID_HEADER, "").astype(str).str.strip()
+                + "-" + df[date_col].astype(str).str.strip()
+                + "-" + df[desc_cols[0]].astype(str).str.strip()
+            )
 
         return [
             Transaction(
@@ -58,7 +92,17 @@ class UBSParser(BaseParser):
                 amount=row.amount,
                 currency=row.currency,
                 account=row.account,
-                sourceFile=row.sourceFile               
-            ) 
+                sourceFile=row.sourceFile,
+            )
             for row in df.itertuples()
         ]
+
+    @staticmethod
+    def _parse_amount(row):
+        debit = str(row.get("Debit", "")).strip()
+        credit = str(row.get("Credit", "")).strip()
+        if debit:
+            return float(debit), TransactionType.DEBIT
+        elif credit:
+            return float(credit), TransactionType.CREDIT
+        return 0.0, TransactionType.NULL

@@ -19,7 +19,8 @@ def create_db():
             amount REAL NOT NULL,
             currency TEXT NOT NULL,
             account TEXT NOT NULL,
-            source_file TEXT NOT NULL
+            source_file TEXT NOT NULL,
+            category TEXT
         );
         """)
         conn.commit()

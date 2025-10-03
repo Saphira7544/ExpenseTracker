@@ -93,6 +93,7 @@ class UBSParser(BaseParser):
                 currency=row.currency,
                 account=row.account,
                 sourceFile=row.sourceFile,
+                category=""
             )
             for row in df.itertuples()
         ]

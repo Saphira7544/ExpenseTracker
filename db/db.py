@@ -32,9 +32,9 @@ def insert_transactions(transactions: list[Transaction]):
             cursor.execute("""
                 INSERT INTO transactions (
                     transaction_id, date, transaction_type, description, 
-                    amount, currency, account, source_file
+                    amount, currency, account, source_file, category
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(transaction_id) DO NOTHING;
             """, 
                 (
@@ -45,7 +45,8 @@ def insert_transactions(transactions: list[Transaction]):
                     t.amount,
                     t.currency,
                     t.account,
-                    t.sourceFile                
+                    t.sourceFile,
+                    t.category                
                 )
             )
         conn.commit()

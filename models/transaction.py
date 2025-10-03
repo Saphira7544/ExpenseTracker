@@ -17,4 +17,5 @@ class Transaction:
     currency: str
     account: str
     sourceFile: str
+    category: str
     

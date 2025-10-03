@@ -1,5 +1,7 @@
 import os
 from openai import OpenAI
+from typing import List
+import pandas as pd
 
 CATEGORIES = [
     "Groceries",
@@ -43,6 +45,7 @@ def classify_transaction(description: str) -> str:
     )
 
     return response.choices[0].message.content.strip()
+
 
 if __name__ == "__main__":
     #example_description = "Migros M Weinbergli Luzern CHE"

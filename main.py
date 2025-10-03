@@ -1,6 +1,7 @@
 import argparse
 from parsers.ubs_parser import UBSParser
 from db.db import create_db, insert_transactions
+from openAI.categorizer import classify_transactions_batch
 # from parsers.cgd_parser import CGDParser  # Not implemented yet
 
 def get_parser(bank: str):
@@ -23,6 +24,12 @@ def main():
     create_db()
 
     transactions = bank_parser.parse(args.file)
+
+    # --- Categorize transactions ---
+    descriptions = [t.description for t in transactions]
+    categories = classify_transactions_batch(descriptions)
+    for t, cat in zip(transactions, categories):
+        t.category = cat
 
     insert_transactions(transactions)
 

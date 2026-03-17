@@ -1,5 +1,6 @@
 import argparse
-from parsers.ubs_parser import UBSParser
+from parsers.generic_parser import GenericParser
+from parsers.banks_configs import UBS_CONFIGS
 from db.db import create_db, insert_transactions
 from openAI.categorizer import classify_transactions_batch
 # from parsers.cgd_parser import CGDParser  # Not implemented yet
@@ -7,7 +8,7 @@ from openAI.categorizer import classify_transactions_batch
 def get_parser(bank: str):
     bank = bank.lower()
     if bank == "ubs":
-        return UBSParser()
+        return GenericParser(UBS_CONFIGS)
     # elif bank == "cgd":
     #     return CGDParser()
     else:

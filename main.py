@@ -17,23 +17,30 @@ def get_parser(bank: str):
 def main():
     parser = argparse.ArgumentParser(description="Parse a bank CSV file into transactions.")
     parser.add_argument("--file", required=True, help="Path to the CSV file")
-    parser.add_argument("--bank", required=True, help="Bank name (e.g., ubs, cgd, revolut)")
+    parser.add_argument("--bank", required=True, help="Bank name (e.g., ubs)")
+    parser.add_argument('--categorize', action='store_true', help='Run LLM categorization')
     args = parser.parse_args()
 
+    # Parse
     bank_parser = get_parser(args.bank)
-
-    create_db()
-
     transactions = bank_parser.parse(args.file)
+    print(f"Parsed {len(transactions)} transactions from {args.file}")
+    
+    
 
-    # --- Categorize transactions ---
-    descriptions = [t.description for t in transactions]
-    categories = classify_transactions_batch(descriptions)
-    for t, cat in zip(transactions, categories):
-        t.category = cat
+    # Categorize (optional flag)
+    if args.categorize:
+        print(" Running LLM categorization...")
+        descriptions = [t.description for t in transactions]
+        categories = classify_transactions_batch(descriptions)
+        for t, cat in zip(transactions, categories):
+            t.category = cat
+        print(" Categorization done")
 
+    # DB 
+    create_db()
     insert_transactions(transactions)
-
+    
     for tx in transactions[:20]:
         print(tx)
 

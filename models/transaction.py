@@ -1,21 +1,22 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 class TransactionType(Enum):
     DEBIT = "debit"
     CREDIT = "credit"
-    NULL = "NULL"
+    NULL = "null"
 
 @dataclass
 class Transaction:
     transactionId: str
+    date: datetime
     transactionType: TransactionType
-    date: str
     description: str
     amount: float
     currency: str
     account: str
     sourceFile: str
-    category: str
+    category: Optional[str] = None
     

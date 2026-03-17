@@ -41,7 +41,7 @@ class GenericParser(BaseParser):
 
         # Dates
         date_col = config['date_col']
-        df['date'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
+        df['date'] = pd.to_datetime(df[date_col], format=config.get('date_format'), errors='coerce')
 
         # Descriptions: Multi-col join
         desc_cols = config['desc_cols']

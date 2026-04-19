@@ -1,62 +1,59 @@
-import sqlite3
+from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
 from models.transaction import Transaction
+import os
 
-DB_NAME = "transactions.db"
+load_dotenv()
 
-def get_connection():
-    return sqlite3.connect(DB_NAME)
+def get_engine():
+    url = (
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+    )
+    return create_engine(url)
 
 def create_db():
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            transaction_id TEXT UNIQUE NOT NULL,
-            date TEXT NOT NULL,
-            transaction_type TEXT NOT NULL,
-            description TEXT,
-            amount REAL NOT NULL,
-            currency TEXT NOT NULL,
-            account TEXT NOT NULL,
-            source_file TEXT NOT NULL,
-            category TEXT
-        );
-        """)
+    with get_engine().connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS transactions (
+                transactionId TEXT PRIMARY KEY,
+                date DATE NOT NULL,
+                transactionType TEXT NOT NULL,
+                description TEXT,
+                amount FLOAT NOT NULL,
+                currency TEXT NOT NULL,
+                account TEXT NOT NULL,
+                sourceFile TEXT NOT NULL,
+                category TEXT
+            )
+        """))
         conn.commit()
+        print("✅ Table ready")
 
 def insert_transactions(transactions: list[Transaction]):
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        inserted = 0
-        skipped = 0
+    inserted = 0
+    skipped = 0
+    with get_engine().connect() as conn:
         for t in transactions:
-            try:
-                cursor.execute("""
-                    INSERT INTO transactions (
-                        transaction_id, date, transaction_type, description, 
-                        amount, currency, account, source_file, category
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(transaction_id) DO NOTHING;
-                """, 
-                    (
-                        t.transactionId,
-                        t.date.isoformat() if t.date else None,
-                        t.transactionType.value,
-                        t.description,
-                        t.amount,
-                        t.currency,
-                        t.account,
-                        t.sourceFile,
-                        t.category                
-                    )
-                )
-                if cursor.rowcount > 0:
-                    inserted += 1
-                else:
-                    skipped += 1
-            except Exception as e:
-                print(f"Error inserting {t.transactionId}: {e}")
+            result = conn.execute(text("""
+                INSERT INTO transactions 
+                (transactionId, date, transactionType, description, amount, currency, account, sourceFile, category)
+                VALUES (:id, :date, :type, :desc, :amount, :currency, :account, :source, :category)
+                ON CONFLICT (transactionId) DO NOTHING
+            """), {
+                "id": t.transactionId,
+                "date": t.date.date() if t.date else None,
+                "type": t.transactionType.value,
+                "desc": t.description,
+                "amount": t.amount,
+                "currency": t.currency,
+                "account": t.account,
+                "source": t.sourceFile,
+                "category": t.category
+            })
+            if result.rowcount > 0:
+                inserted += 1
+            else:
+                skipped += 1
         conn.commit()
-        print(f" Inserted: {inserted} | Skipped (duplicates): {skipped}")
+    print(f"✅ Inserted: {inserted} | Skipped (duplicates): {skipped}")

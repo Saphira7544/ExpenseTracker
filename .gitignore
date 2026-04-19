@@ -1,3 +1,4 @@
 .env
-/db/*
-/files/*
+db/*
+files/*
+/_pycache_/

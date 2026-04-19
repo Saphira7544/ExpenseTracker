@@ -1,5 +1,11 @@
 
 UBS_CONFIGS = {
+    "_bank_exclude_patterns": [
+        "Revolut",                  # Revolut top-ups (any account)        
+        "I. PEREIRA CASTELO",       # My name = internal
+        "Payment to card",          # Debit -> prepaid
+        "TRANSFER FROM ACCOUNT"     # Prepaid <- Debit     
+    ],
     "debit": {
         "bank": "ubs",
         "file_type": "debit",
@@ -13,7 +19,8 @@ UBS_CONFIGS = {
         "credit_col": "Credit",
         "currency_col": "Currency",
         "id_col": "Transaction no.",
-        "account": "UBS Debit"
+        "account": "UBS Debit",
+        "drop_empty_amount": True
         
     },
     "prepaid": {
@@ -30,7 +37,8 @@ UBS_CONFIGS = {
         #"amount_col": "Amount",  # Single amount col
         "currency_col": "Currency",
         "id_col": None,
-        "account": "UBS Prepaid"
+        "account": "UBS Prepaid",
+        "drop_empty_amount": True    
     }
 }
 
@@ -38,6 +46,6 @@ UBS_CONFIGS = {
 
 # CGD_CONFIGS = { ... }
 
-ALL_BANK_CONFIGS = [
-    *UBS_CONFIGS.values(),
-]
+ALL_BANK_CONFIGS = {
+    "ubs": UBS_CONFIGS,
+}

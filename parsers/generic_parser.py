@@ -36,11 +36,17 @@ class GenericParser(BaseParser):
         else:
             df['description'] = df[desc_cols].str.strip()
 
+        # Filter
+        df = self._apply_exclusions(df, config)
+
         # Amount/Type
         if 'debit_col' in config:
             df[['amount', 'transactionType']] = df.apply(
                 lambda row: self._parse_amount(row, config['debit_col'], config['credit_col']), axis=1, result_type='expand'
             )
+            if config.get('drop_empty_amount', True):
+                df = df[df['transactionType'] != TransactionType.NULL.value]
+
         else:  # TODO: Make more flexible -> currently assumes single-amount column is always a debit
             df['amount'] = pd.to_numeric(df[config['amount_col']], errors='coerce') * -1  # Negative debits
             df['transactionType'] = TransactionType.DEBIT.value
@@ -82,7 +88,6 @@ class GenericParser(BaseParser):
                 return i  # Skip i rows; line i becomes the pandas header
         return 0
 
-
     @staticmethod
     def _parse_amount(row: pd.Series, debit_col: str, credit_col: str) -> tuple:
         debit = row.get(debit_col, '').strip()
@@ -99,3 +104,18 @@ class GenericParser(BaseParser):
         key = f"{date_str}-{str(desc)[:50]}-{amt}"
         return hashlib.md5(key.encode()).hexdigest()[:12]
 
+    @staticmethod
+    def _apply_exclusions(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
+        """ Excludes transactions with certain descriptions """
+
+        exclude_patterns = config.get('exclude_patterns', [])
+        if not exclude_patterns:
+            return df
+
+        is_excluded = df['description'].str.contains(
+            '|'.join(exclude_patterns), case=False, na=False
+        )
+        dropped = is_excluded.sum()
+        df = df[~is_excluded]
+        print(f"Excluded {dropped} rows matching exclusion patterns")
+        return df

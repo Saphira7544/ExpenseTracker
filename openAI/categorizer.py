@@ -3,17 +3,20 @@ from openai import OpenAI
 client = OpenAI()
 
 CATEGORIES = [
+    "Salary",
+    "Investments",
     "Groceries",
     "Restaurants/Bars",
     "Transport",
     "Housing",
+    "Rents",
     "Health",
     "Subscriptions",
     "Transfers",
     "Shopping",
     "Entertainment",
     "Education/Work",
-    "Travel"
+    "Travel",
     "Other"
 ]
 

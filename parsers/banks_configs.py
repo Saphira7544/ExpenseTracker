@@ -17,7 +17,9 @@ UBS_CONFIGS = {
         "date_col": "Purchase date",
         "date_format": "%d.%m.%Y",
         "desc_cols": "Booking text",
-        "amount_col": "Amount",  # Single amount col
+        "debit_col": "Debit",
+        "credit_col": "Credit",
+        #"amount_col": "Amount",  # Single amount col
         "currency_col": "Currency",
         "id_col": None,
         "account": "UBS Prepaid",
@@ -28,3 +30,7 @@ UBS_CONFIGS = {
 # REVOLUT_CONFIGS = { ... }
 
 # CGD_CONFIGS = { ... }
+
+ALL_BANK_CONFIGS = [
+    *UBS_CONFIGS.values(),
+]

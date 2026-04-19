@@ -1,10 +1,10 @@
 import pandas as pd
 import os
 import hashlib
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from abc import ABC, abstractmethod
-from datetime import datetime
-from models.transaction import Transaction, TransactionType  # Fix your dataclass import
+from utils.file_utils import read_file_lines
+from models.transaction import Transaction, TransactionType  
 
 class BaseParser(ABC):
     @abstractmethod
@@ -12,38 +12,24 @@ class BaseParser(ABC):
         pass
 
 class GenericParser(BaseParser):
-    def __init__(self, configs: Dict[str, Dict[str, Any]]):
-        self.configs = configs
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
 
     def parse(self, filepath: str) -> List[Transaction]:
-        lines = self._read_lines(filepath)
-        config = self._detect_config(lines)
-        if not config:
-            raise ValueError(f"Unknown file format: {filepath}")
-        return self._parse_file(filepath, config)
-
-    def _read_lines(self, filepath: str) -> List[str]:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return f.readlines()
-
-    def _detect_config(self, lines: List[str]) -> Optional[Dict[str, Any]]:
-        for subtype, c in self.configs.items():
-            if c.get('header') and any(c['header'] in line for line in lines[:20]):  # Scan first 20 lines
-                return {**c, 'subtype': subtype}
-        return None
+        return self._parse_file(filepath, self.config)
 
     def _parse_file(self, filepath: str, config: Dict[str, Any]) -> List[Transaction]:
-        # Robust CSV: Auto-detect sep, skip messy header/metadata
-        skiprows = self._get_skiprows(self._read_lines(filepath), config.get('header', ''))
-        sep = config.get('sep', ';')  # Default semicolon for UBS     
-        df = pd.read_csv(filepath, sep=sep, skiprows=skiprows, encoding='utf-8', dtype=str, on_bad_lines='skip')
+
+        skiprows = self._get_skiprows(read_file_lines(filepath), config.get('header', ''))
+        sep = config.get('sep', ';')  # Use config or default ;     
+        df = pd.read_csv(filepath, sep=sep, skiprows=skiprows, encoding=config.get('encoding', 'latin1'), dtype=str, on_bad_lines='skip')
         df = df.fillna('').dropna(how='all')  # Clean NaNs/empty
 
         # Dates
         date_col = config['date_col']
         df['date'] = pd.to_datetime(df[date_col], format=config.get('date_format'), errors='coerce')
 
-        # Descriptions: Multi-col join
+        # Descriptions
         desc_cols = config['desc_cols']
         if isinstance(desc_cols, list):
             df['description'] = df[desc_cols].agg(' '.join, axis=1).str.strip()
@@ -55,7 +41,7 @@ class GenericParser(BaseParser):
             df[['amount', 'transactionType']] = df.apply(
                 lambda row: self._parse_amount(row, config['debit_col'], config['credit_col']), axis=1, result_type='expand'
             )
-        else:  # Prepaid: Use Amount col, assume debit
+        else:  # TODO: Make more flexible -> currently assumes single-amount column is always a debit
             df['amount'] = pd.to_numeric(df[config['amount_col']], errors='coerce') * -1  # Negative debits
             df['transactionType'] = TransactionType.DEBIT.value
 
@@ -65,8 +51,8 @@ class GenericParser(BaseParser):
         df['sourceFile'] = os.path.basename(filepath)
 
         # Drop invalid rows
+        df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
         df = df.dropna(subset=['date', 'amount'])
-        df = df[df['amount'].astype(str).str.strip() != '']
 
         # Generate IDs
         df['transactionId'] = df[config.get('id_col', '')] \
@@ -90,7 +76,7 @@ class GenericParser(BaseParser):
 
     @staticmethod
     def _get_skiprows(lines: List[str], header: str) -> int:
-        """Return the index of the header row — pandas skips everything before it and reads it as columns."""
+        """Return the index of the header row -> pandas skips everything before the returned index and reads the rest as columns."""
         for i, line in enumerate(lines):
             if header in line:
                 return i  # Skip i rows; line i becomes the pandas header

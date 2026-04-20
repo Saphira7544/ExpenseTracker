@@ -82,20 +82,26 @@ class GenericParser(BaseParser):
 
     @staticmethod
     def _get_skiprows(lines: List[str], header: str) -> int:
-        """Return the index of the header row -> pandas skips everything before the returned index and reads the rest as columns."""
+        """Return the index of the first line containing any of the header signatures.  
+                -> pandas skips everything before the returned index and reads the rest as columns."""
+        signatures = header if isinstance(header, list) else [header]
         for i, line in enumerate(lines):
-            if header in line:
+            if any(sig in line for sig in signatures):
                 return i  # Skip i rows; line i becomes the pandas header
         return 0
 
     @staticmethod
     def _parse_amount(row: pd.Series, debit_col: str, credit_col: str) -> tuple:
-        debit = row.get(debit_col, '').strip()
-        credit = row.get(credit_col, '').strip()
-        if debit:
-            return -float(debit), TransactionType.DEBIT.value
-        if credit:
-            return float(credit), TransactionType.CREDIT.value
+        debit_raw = row.get(debit_col, '').strip()
+        credit_raw = row.get(credit_col, '').strip()
+        
+        if debit_raw:
+            amount = abs(float(debit_raw)) * -1  # Always negative 
+            return amount, TransactionType.DEBIT.value
+        if credit_raw:
+            amount = abs(float(credit_raw))      # Always positive
+            return amount, TransactionType.CREDIT.value
+        
         return 0.0, TransactionType.NULL.value
 
     @staticmethod

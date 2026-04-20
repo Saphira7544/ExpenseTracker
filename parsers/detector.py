@@ -11,7 +11,16 @@ def detect_config(filepath: str) -> Dict[str, Any]:
         for subtype, config in bank_data.items():
             if subtype.startswith("_"):
                 continue
-            if config.get("header") and any(config["header"] in line for line in lines[:20]):
+            if _matches_header(config.get("header", []), lines):
                 return {**config, "exclude_patterns": bank_patterns}
 
     raise ValueError(f"Could not detect file format for: {filepath}")
+
+
+def _matches_header(header_signatures: list, lines: list) -> bool:
+    """All signatures must be present in the first 20 lines."""
+    first_20 = lines[:20]
+    return all(
+        any(signature in line for line in first_20)
+        for signature in header_signatures
+    )

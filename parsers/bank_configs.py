@@ -9,7 +9,7 @@ UBS_CONFIGS = {
     "debit": {
         "bank": "ubs",
         "file_type": "debit",
-        "header": "Trade date",
+        "header": ["Trade date", "Transaction no.", "Value date"],
         "sep": ";",
         "encoding": "latin1",
         "date_col": "Value date",
@@ -26,7 +26,7 @@ UBS_CONFIGS = {
     "prepaid": {
         "bank": "ubs",
         "file_type": "prepaid",
-        "header": "Account number",
+        "header": ["Account number", "Purchase date", "Booking text"],
         "sep": ";",
         "encoding": "latin1",
         "date_col": "Purchase date",

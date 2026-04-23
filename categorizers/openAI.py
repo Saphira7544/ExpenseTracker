@@ -20,7 +20,7 @@ CATEGORIES = [
     "Other"
 ]
 
-def classify_transactions_batch(descriptions, batch_size=50):
+def classify_transactions_batch(descriptions, batch_size=40):
     """
     Classify multiple transaction descriptions using GPT-4o-mini in batches.
     """

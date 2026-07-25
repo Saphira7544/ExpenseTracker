@@ -10,6 +10,7 @@
     <h2>Expense Tracker</h2>
     <a href="/" class="{{ 'active' if active_page == 'dashboard' }}">Dashboard</a>
     <a href="/upload" class="{{ 'active' if active_page == 'upload' }}">Upload Files</a>
+    <a href="/transactions" class="{{ 'active' if active_page == 'transactions' }}">Transactions</a>
   </nav>
   <main class="main-content">
     {% block content %}{% endblock %}

@@ -25,10 +25,24 @@ def create_db():
                 account TEXT NOT NULL,
                 sourceFile TEXT NOT NULL,
                 category TEXT
-            )
+            )   
         """))
         conn.commit()
         print("✅ Table ready")
+
+def create_splits_table():
+    with get_engine().connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS transaction_splits (
+                id SERIAL PRIMARY KEY,
+                transactionId TEXT NOT NULL REFERENCES transactions(transactionId),
+                category TEXT NOT NULL,
+                amount FLOAT NOT NULL,
+                note TEXT
+            )
+        """))
+        conn.commit()
+        print("✅ Splits table ready")
 
 def insert_transactions(transactions: list[Transaction]):
     inserted = 0

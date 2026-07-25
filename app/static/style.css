@@ -16,27 +16,12 @@ body {
   flex-shrink: 0;
 }
 
-.sidebar h2 {
-  font-size: 18px;
-  padding: 0 24px 24px;
-}
-
-.sidebar a {
-  display: block;
-  padding: 12px 24px;
-  color: #b7bfcc;
-  text-decoration: none;
-  font-size: 14px;
-}
-
+.sidebar h2 { font-size: 18px; padding: 0 24px 24px; }
+.sidebar a { display: block; padding: 12px 24px; color: #b7bfcc; text-decoration: none; font-size: 14px; }
 .sidebar a:hover { background: #2a3341; color: #fff; }
 .sidebar a.active { background: #2a3341; color: #fff; border-left: 3px solid #4f8ef7; }
 
-.main-content {
-  flex: 1;
-  padding: 32px 40px;
-}
-
+.main-content { flex: 1; padding: 32px 40px; }
 h1 { font-size: 22px; margin-bottom: 20px; }
 
 .card {
@@ -47,46 +32,114 @@ h1 { font-size: 22px; margin-bottom: 20px; }
   margin-bottom: 20px;
 }
 
-.dropzone {
-  border: 2px dashed #c7cdd6;
-  border-radius: 8px;
-  padding: 40px;
-  text-align: center;
-  color: #6b7280;
-  cursor: pointer;
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  align-items: end;
 }
 
+.filters-grid label { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; }
+
+input, select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+}
+
+input:focus, select:focus { outline: none; border-color: #4f8ef7; }
+
+.dropzone { border: 2px dashed #c7cdd6; border-radius: 8px; padding: 40px; text-align: center; color: #6b7280; cursor: pointer; }
 .dropzone.dragover { border-color: #4f8ef7; background: #eef4ff; }
 
 .file-list { margin-top: 16px; }
-.file-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: #f8f9fb;
-  border-radius: 6px;
-  margin-bottom: 8px;
-  font-size: 14px;
-}
+.file-item { display: flex; justify-content: space-between; padding: 10px 14px; background: #f8f9fb; border-radius: 6px; margin-bottom: 8px; font-size: 14px; }
 
 .status-pending { color: #9ca3af; }
 .status-success { color: #16a34a; font-weight: 600; }
 .status-error { color: #dc2626; font-weight: 600; }
 
+button { font-family: inherit; }
+
 button.primary {
   background: #4f8ef7;
   color: #fff;
   border: none;
-  padding: 10px 20px;
+  padding: 9px 18px;
   border-radius: 6px;
   font-size: 14px;
   cursor: pointer;
-  margin-top: 16px;
 }
-
 button.primary:hover { background: #3d7de0; }
 button.primary:disabled { background: #c7cdd6; cursor: not-allowed; }
 
+button.secondary {
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+button.secondary:hover { background: #f3f4f6; }
+
+button.danger {
+  background: #fff;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+button.danger:hover { background: #fef2f2; }
+
 table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 14px; }
-th { color: #6b7280; font-weight: 600; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+th { color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
+
+.amount-positive { color: #16a34a; font-weight: 600; }
+.amount-negative { color: #dc2626; font-weight: 600; }
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.cat-Investments { background: #7c3aed; }
+.cat-Groceries { background: #16a34a; }
+.cat-Restaurants-Bars { background: #f97316; }
+.cat-Transport { background: #0ea5e9; }
+.cat-Housing { background: #b45309; }
+.cat-Rents { background: #92400e; }
+.cat-Health { background: #ef4444; }
+.cat-Subscriptions { background: #6366f1; }
+.cat-Transfers { background: #64748b; }
+.cat-Shopping { background: #ec4899; }
+.cat-Entertainment { background: #eab308; color: #1f2937; }
+.cat-Education-Work { background: #14b8a6; }
+.cat-Travel { background: #3b82f6; }
+.cat-Salary { background: #22c55e; }
+.cat-Split { background: #a855f7; }
+.cat-Other { background: #9ca3af; }
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 999;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-box { background: #fff; border-radius: 8px; padding: 24px; width: 400px; }
+.split-row { display: flex; gap: 8px; margin-bottom: 8px; }

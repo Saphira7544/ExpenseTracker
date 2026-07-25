@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Transactions</h1>
+
+<div class="card">
+  <div class="filters-grid">
+    <div>
+      <label>Search</label>
+      <input type="text" id="searchInput" placeholder="Description...">
+    </div>
+    <div>
+      <label>Account</label>
+      <select id="accountFilter"><option value="">All</option></select>
+    </div>
+    <div>
+      <label>Category</label>
+      <select id="categoryFilter"><option value="">All</option></select>
+    </div>
+    <div>
+      <label>Split status</label>
+      <select id="splitFilter">
+        <option value="">All</option>
+        <option value="split">Split</option>
+        <option value="not_split">Not split</option>
+      </select>
+    </div>
+    <div>
+      <label>Amount sign</label>
+      <select id="signFilter">
+        <option value="">All</option>
+        <option value="positive">Positive</option>
+        <option value="negative">Negative</option>
+      </select>
+    </div>
+    <div>
+      <label>Min amount</label>
+      <input type="number" id="minAmount" step="0.01" placeholder="0.00">
+    </div>
+    <div>
+      <label>Max amount</label>
+      <input type="number" id="maxAmount" step="0.01" placeholder="0.00">
+    </div>
+    <div>
+      <label>From</label>
+      <input type="date" id="dateFrom">
+    </div>
+    <div>
+      <label>To</label>
+      <input type="date" id="dateTo">
+    </div>
+    <div>
+  <button class="primary" id="filterBtn">Apply filters</button>
+  </div>
+  <div>
+    <button class="secondary" id="resetFilterBtn">Reset filters</button>
+  </div>
+  </div>
+</div>
+
+<div class="card" id="bulkActionBar" style="display:none; margin-bottom:12px; padding:12px 16px;">
+  <span id="selectedCount" style="font-size:13px; color:#374151; margin-right:12px;"></span>
+  <select id="bulkCategorySelect" style="width:auto; display:inline-block;"></select>
+  <button class="primary" id="bulkApplyBtn" style="margin-left:8px;">Apply to selected</button>
+  <button class="secondary" id="bulkClearBtn" style="margin-left:8px;">Clear selection</button>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="selectAllCheckbox"></th>
+        <th>Date</th>
+        <th>Description</th>
+        <th>Amount</th>
+        <th>Currency</th>
+        <th>Account</th>
+        <th>Category</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="txBody"></tbody>
+  </table>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; flex-wrap:wrap; gap:12px;">
+    <span id="pageInfo" style="font-size:13px; color:#6b7280;"></span>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <label style="font-size:13px; color:#6b7280;">Per page:</label>
+      <select id="pageSizeSelect" style="width:auto;">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+      </select>
+      <button class="secondary" id="firstPageBtn">First</button>
+      <button class="secondary" id="prevPageBtn">Previous</button>
+      <button class="secondary" id="nextPageBtn">Next</button>
+      <button class="secondary" id="lastPageBtn">Last</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="splitModal">
+  <div class="modal-box">
+    <h1>Split Transaction</h1>
+    <p>Total: <span id="splitTotal"></span> — <span id="splitAllocated">0</span> allocated</p>
+    <div id="splitRows"></div>
+    <button class="secondary" id="addSplitRow">+ Add row</button>
+    <p style="font-size:12px; color:#6b7280; margin-top:8px;">Leftover amount will be auto-filed as:</p>
+    <select id="remainderCategory">
+    </select>
+    <div style="margin-top:16px; display:flex; gap:8px;">
+      <button class="primary" id="saveSplitBtn">Save split</button>
+      <button class="secondary" id="cancelSplitBtn">Cancel</button>
+    </div>
+    <p id="splitError" style="color:#dc2626; margin-top:8px;"></p>
+  </div>
+</div>
+
+<script>
+const API_KEY = "{{ api_key }}";
+const CATEGORIES = ["Salary","Investments","Groceries","Restaurants/Bars","Transport","Housing","Rents","Health","Subscriptions","Transfers","Shopping","Entertainment","Education/Work","Travel","Other"];
+
+let currentSplitId = null;
+let currentSplitAmount = 0;
+let pageSize = 50;
+let currentOffset = 0;
+let lastRowCount = 0;
+let totalCount = 0;
+let selectedIds = new Set();
+
+function catClass(cat) {
+  return "cat-" + (cat || "Other").replace(/[\/\s]/g, "-");
+}
+
+async function loadFilters() {
+  const res = await fetch("/api/transactions/filters");
+  const data = await res.json();
+  const accSel = document.getElementById("accountFilter");
+  data.accounts.forEach(a => accSel.innerHTML += `<option value="${a}">${a}</option>`);
+  const catSel = document.getElementById("categoryFilter");
+  data.categories.forEach(c => catSel.innerHTML += `<option value="${c}">${c}</option>`);
+
+  const remSel = document.getElementById("remainderCategory");
+  CATEGORIES.forEach(c => remSel.innerHTML += `<option value="${c}" ${c === "Other" ? "selected" : ""}>${c}</option>`);
+
+  const bulkSel = document.getElementById("bulkCategorySelect");
+  CATEGORIES.forEach(c => bulkSel.innerHTML += `<option value="${c}">${c}</option>`);
+}
+
+async function loadTransactions() {
+  const params = new URLSearchParams();
+  const search = document.getElementById("searchInput").value;
+  const account = document.getElementById("accountFilter").value;
+  const category = document.getElementById("categoryFilter").value;
+  const splitStatus = document.getElementById("splitFilter").value;
+  const amountSign = document.getElementById("signFilter").value;
+  const minAmount = document.getElementById("minAmount").value;
+  const maxAmount = document.getElementById("maxAmount").value;
+  const dateFrom = document.getElementById("dateFrom").value;
+  const dateTo = document.getElementById("dateTo").value;
+
+  if (search) params.append("search", search);
+  if (account) params.append("account", account);
+  if (category) params.append("category", category);
+  if (splitStatus) params.append("split_status", splitStatus);
+  if (amountSign) params.append("amount_sign", amountSign);
+  if (minAmount) params.append("min_amount", minAmount);
+  if (maxAmount) params.append("max_amount", maxAmount);
+  if (dateFrom) params.append("date_from", dateFrom);
+  if (dateTo) params.append("date_to", dateTo);
+
+  params.append("limit", pageSize);
+  params.append("offset", currentOffset);
+  const res = await fetch("/api/transactions?" + params.toString());
+  const rows = await res.json();
+
+  lastRowCount = rows.length;
+
+  const countParams = new URLSearchParams(params);
+  countParams.delete("limit");
+  countParams.delete("offset");
+  const countRes = await fetch("/api/transactions/count?" + countParams.toString());
+  const countData = await countRes.json();
+  totalCount = countData.total;
+
+  updatePaginationUI();
+
+  const tbody = document.getElementById("txBody");
+  tbody.innerHTML = "";
+
+  rows.forEach(tx => {
+    const tr = document.createElement("tr");
+    const catOptions = CATEGORIES.concat(["Split"]).map(c =>
+      `<option value="${c}" ${c === tx.category ? "selected" : ""}>${c}</option>`
+    ).join("");
+    const amountClass = tx.amount >= 0 ? "amount-positive" : "amount-negative";
+    const isSplit = tx.category === "Split";
+
+    tr.innerHTML = `
+      <td><input type="checkbox" class="row-checkbox" data-id="${tx.transactionid}"></td>
+      <td>${tx.date}</td>
+      <td>${tx.description}</td>
+      <td class="${amountClass}">${tx.amount}</td>
+      <td>${tx.currency}</td>
+      <td>${tx.account}</td>
+      <td><span class="badge ${catClass(tx.category)}">${tx.category || "Uncategorized"}</span></td>
+      <td>
+        ${isSplit
+          ? `<button class="danger undo-split-btn" data-id="${tx.transactionid}">Undo split</button>`
+          : `<button class="secondary split-btn" data-id="${tx.transactionid}" data-amount="${tx.amount}">Split</button>
+             <select class="cat-select" data-id="${tx.transactionid}" style="width:auto; display:inline-block; margin-left:6px;">${catOptions}</select>`
+        }
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.querySelectorAll(".cat-select").forEach(sel => {
+    sel.onchange = async () => {
+      await fetch(`/api/transactions/${sel.dataset.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+        body: JSON.stringify({ category: sel.value }),
+      });
+      loadTransactions();
+    };
+  });
+
+  document.querySelectorAll(".undo-split-btn").forEach(btn => {
+    btn.onclick = async () => {
+      await fetch(`/api/transactions/${btn.dataset.id}/split`, {
+        method: "DELETE",
+        headers: { "X-API-Key": API_KEY },
+      });
+      loadTransactions();
+    };
+  });
+
+  selectedIds.clear();
+  updateBulkBar();
+  document.getElementById("selectAllCheckbox").checked = false;
+
+  document.querySelectorAll(".row-checkbox").forEach(cb => {
+    cb.onchange = () => {
+      if (cb.checked) {
+        selectedIds.add(cb.dataset.id);
+      } else {
+        selectedIds.delete(cb.dataset.id);
+      }
+      updateBulkBar();
+    };
+  });
+}
+
+function addSplitRow() {
+  const row = document.createElement("div");
+  row.className = "split-row";
+  const catOptions = CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join("");
+  row.innerHTML = `
+    <select class="split-category">${catOptions}</select>
+    <input type="number" class="split-amount" placeholder="Amount" step="0.01">
+  `;
+  document.getElementById("splitRows").appendChild(row);
+  row.querySelector(".split-amount").addEventListener("input", updateAllocatedDisplay);
+}
+
+function updateAllocatedDisplay() {
+  const amounts = Array.from(document.querySelectorAll(".split-amount")).map(i => parseFloat(i.value) || 0);
+  const sum = amounts.reduce((a, b) => a + b, 0);
+  document.getElementById("splitAllocated").textContent = sum.toFixed(2);
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.classList.contains("split-btn")) {
+    currentSplitId = e.target.dataset.id;
+    currentSplitAmount = Math.abs(parseFloat(e.target.dataset.amount));
+    document.getElementById("splitTotal").textContent = currentSplitAmount.toFixed(2);
+    document.getElementById("splitAllocated").textContent = "0.00";
+    document.getElementById("splitRows").innerHTML = "";
+    document.getElementById("splitError").textContent = "";
+    addSplitRow();
+    document.getElementById("splitModal").style.display = "flex";
+  }
+});
+
+document.getElementById("addSplitRow").onclick = addSplitRow;
+document.getElementById("cancelSplitBtn").onclick = () => {
+  document.getElementById("splitModal").style.display = "none";
+};
+
+document.getElementById("saveSplitBtn").onclick = async () => {
+  const rows = document.querySelectorAll("#splitRows > div");
+  const splits = Array.from(rows).map(r => ({
+    category: r.querySelector(".split-category").value,
+    amount: parseFloat(r.querySelector(".split-amount").value || 0),
+  })).filter(s => s.amount > 0);
+
+  const sum = splits.reduce((a, s) => a + s.amount, 0);
+  if (sum > currentSplitAmount + 0.01) {
+    document.getElementById("splitError").textContent = `Allocated ${sum.toFixed(2)} exceeds total ${currentSplitAmount.toFixed(2)}`;
+    return;
+  }
+
+  const remainderCategory = document.getElementById("remainderCategory").value;
+
+  const res = await fetch(`/api/transactions/${currentSplitId}/split`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+    body: JSON.stringify({ splits, remainder_category: remainderCategory }),
+  });
+
+  if (res.ok) {
+    document.getElementById("splitModal").style.display = "none";
+    loadTransactions();
+  } else {
+    const err = await res.json();
+    document.getElementById("splitError").textContent = err.detail;
+  }
+};
+
+function updateBulkBar() {
+  const bar = document.getElementById("bulkActionBar");
+  const count = selectedIds.size;
+  if (count > 0) {
+    bar.style.display = "block";
+    document.getElementById("selectedCount").textContent = `${count} selected`;
+  } else {
+    bar.style.display = "none";
+  }
+}
+
+document.getElementById("selectAllCheckbox").onchange = (e) => {
+  document.querySelectorAll(".row-checkbox").forEach(cb => {
+    cb.checked = e.target.checked;
+    if (e.target.checked) {
+      selectedIds.add(cb.dataset.id);
+    } else {
+      selectedIds.delete(cb.dataset.id);
+    }
+  });
+  updateBulkBar();
+};
+
+document.getElementById("bulkClearBtn").onclick = () => {
+  selectedIds.clear();
+  document.querySelectorAll(".row-checkbox").forEach(cb => cb.checked = false);
+  document.getElementById("selectAllCheckbox").checked = false;
+  updateBulkBar();
+};
+
+document.getElementById("bulkApplyBtn").onclick = async () => {
+  const category = document.getElementById("bulkCategorySelect").value;
+  if (selectedIds.size === 0 || !category) return;
+
+  const res = await fetch("/api/transactions/bulk-category", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+    body: JSON.stringify({ transaction_ids: Array.from(selectedIds), category }),
+  });
+
+  if (res.ok) {
+    selectedIds.clear();
+    loadTransactions();
+  } else {
+    const err = await res.json();
+    alert("Bulk update failed: " + (err.detail || res.status));
+  }
+};
+
+document.getElementById("filterBtn").onclick = () => {
+  currentOffset = 0;
+  loadTransactions();
+};
+
+document.getElementById("resetFilterBtn").onclick = () => {
+  document.getElementById("searchInput").value = "";
+  document.getElementById("accountFilter").value = "";
+  document.getElementById("categoryFilter").value = "";
+  document.getElementById("splitFilter").value = "";
+  document.getElementById("signFilter").value = "";
+  document.getElementById("minAmount").value = "";
+  document.getElementById("maxAmount").value = "";
+  document.getElementById("dateFrom").value = "";
+  document.getElementById("dateTo").value = "";
+  currentOffset = 0;
+  loadTransactions();
+};
+loadFilters();
+loadTransactions();
+
+function updatePaginationUI() {
+  const start = currentOffset + 1;
+  const end = currentOffset + lastRowCount;
+  document.getElementById("pageInfo").textContent = lastRowCount === 0
+    ? "No results"
+    : `Showing ${start}–${end} of ${totalCount}`;
+
+  document.getElementById("firstPageBtn").disabled = currentOffset === 0;
+  document.getElementById("prevPageBtn").disabled = currentOffset === 0;
+  document.getElementById("nextPageBtn").disabled = end >= totalCount;
+  document.getElementById("lastPageBtn").disabled = end >= totalCount;
+}
+
+document.getElementById("firstPageBtn").onclick = () => {
+  currentOffset = 0;
+  loadTransactions();
+};
+
+document.getElementById("prevPageBtn").onclick = () => {
+  currentOffset = Math.max(0, currentOffset - pageSize);
+  loadTransactions();
+};
+
+document.getElementById("nextPageBtn").onclick = () => {
+  if (currentOffset + pageSize < totalCount) {
+    currentOffset += pageSize;
+    loadTransactions();
+  }
+};
+
+document.getElementById("lastPageBtn").onclick = () => {
+  const lastPageStart = Math.floor((totalCount - 1) / pageSize) * pageSize;
+  currentOffset = Math.max(0, lastPageStart);
+  loadTransactions();
+};
+
+document.getElementById("pageSizeSelect").onchange = (e) => {
+  pageSize = parseInt(e.target.value);
+  currentOffset = 0;
+  loadTransactions();
+};
+</script>
+{% endblock %}

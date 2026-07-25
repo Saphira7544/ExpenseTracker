@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 from parsers.detector import detect_config
 from parsers.generic_parser import GenericParser
-from db.db import create_db, insert_transactions
+from ExpenseTracker.legacy_db.db import create_db, insert_transactions
 from categorizers.openAI import classify_transactions_batch
 from categorizers.rule_categorizer import rule_based_categorize
 

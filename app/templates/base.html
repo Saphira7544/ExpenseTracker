@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Expense Tracker</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="sidebar">
+    <h2>Expense Tracker</h2>
+    <a href="/" class="{{ 'active' if active_page == 'dashboard' }}">Dashboard</a>
+    <a href="/upload" class="{{ 'active' if active_page == 'upload' }}">Upload Files</a>
+  </nav>
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

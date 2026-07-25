@@ -1,30 +1,111 @@
-<!DOCTYPE html>
-<html>
-<head><title>Upload Bank File</title></head>
-<body>
-  <h1>Upload Bank Statement</h1>
-  <form id="uploadForm">
-    <input type="file" id="fileInput" multiple>
-    <input type="text" id="apiKey" placeholder="API Key">
-    <button type="submit">Upload</button>
-  </form>
-  <pre id="result"></pre>
+{% extends "base.html" %}
+{% block content %}
+<h1>Upload Bank Statement</h1>
 
-  <script>
-    document.getElementById("uploadForm").onsubmit = async (e) => {
-      e.preventDefault();
-      const files = document.getElementById("fileInput").files;
-      const apiKey = document.getElementById("apiKey").value;
-      const formData = new FormData();
-      for (const file of files) formData.append("files", file);
+<div class="card">
+  <div class="dropzone" id="dropzone">
+    <p>Drag files here or click to browse</p>
+    <input type="file" id="fileInput" multiple hidden>
+  </div>
 
-      const res = await fetch("/api/uploads", {
-        method: "POST",
-        headers: { "X-API-Key": apiKey },
-        body: formData,
+  <div class="file-list" id="fileList"></div>
+
+  <button class="primary" id="uploadBtn" disabled>Upload</button>
+</div>
+
+<div class="card" id="resultsCard" style="display:none">
+  <h1>Results</h1>
+  <table>
+    <thead>
+      <tr><th>File</th><th>Parsed</th><th>Rule matched</th><th>LLM matched</th></tr>
+    </thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+</div>
+
+<script>
+const API_KEY = "{{ api_key }}";
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+const fileList = document.getElementById("fileList");
+const uploadBtn = document.getElementById("uploadBtn");
+const resultsCard = document.getElementById("resultsCard");
+const resultsBody = document.getElementById("resultsBody");
+
+let selectedFiles = [];
+
+dropzone.onclick = () => fileInput.click();
+
+dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add("dragover"); };
+dropzone.ondragleave = () => dropzone.classList.remove("dragover");
+dropzone.ondrop = (e) => {
+  e.preventDefault();
+  dropzone.classList.remove("dragover");
+  handleFiles(e.dataTransfer.files);
+};
+
+fileInput.onchange = () => handleFiles(fileInput.files);
+
+function handleFiles(files) {
+  selectedFiles = Array.from(files);
+  renderFileList();
+  uploadBtn.disabled = selectedFiles.length === 0;
+}
+
+function renderFileList() {
+  fileList.innerHTML = "";
+  selectedFiles.forEach(f => {
+    const div = document.createElement("div");
+    div.className = "file-item";
+    div.innerHTML = `<span>${f.name}</span><span class="status-pending" id="status-${f.name}">Pending</span>`;
+    fileList.appendChild(div);
+  });
+}
+
+uploadBtn.onclick = async () => {
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = "Uploading...";
+
+  const formData = new FormData();
+  selectedFiles.forEach(f => formData.append("files", f));
+
+  try {
+    const res = await fetch("/api/uploads", {
+      method: "POST",
+      headers: { "X-API-Key": API_KEY },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      selectedFiles.forEach(f => {
+        document.getElementById(`status-${f.name}`).textContent = "Error";
+        document.getElementById(`status-${f.name}`).className = "status-error";
       });
-      document.getElementById("result").textContent = JSON.stringify(await res.json(), null, 2);
-    };
-  </script>
-</body>
-</html>
+      alert("Upload failed: " + (err.detail || res.status));
+      return;
+    }
+
+    const data = await res.json();
+    resultsCard.style.display = "block";
+    resultsBody.innerHTML = "";
+
+    data.uploaded.forEach(r => {
+      document.getElementById(`status-${r.filename}`).textContent = "Uploaded";
+      document.getElementById(`status-${r.filename}`).className = "status-success";
+
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${r.filename}</td><td>${r.parsed}</td><td>${r.rule_matched}</td><td>${r.llm_matched}</td>`;
+      resultsBody.appendChild(row);
+    });
+  } catch (e) {
+    alert("Network error: " + e.message);
+  } finally {
+    uploadBtn.textContent = "Upload";
+    uploadBtn.disabled = false;
+    selectedFiles = [];
+    fileInput.value = "";
+  }
+};
+</script>
+{% endblock %}

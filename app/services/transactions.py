@@ -1,11 +1,15 @@
 from sqlalchemy import text
 from app.db.session import engine
 
-def get_transactions(account=None, category=None, search=None, date_from=None, date_to=None,
+def attach_user_to_transactions(transactions, user_id: int) -> None:
+    for t in transactions:
+        t.user_id = user_id
+
+def get_transactions(user_id, account=None, category=None, search=None, date_from=None, date_to=None,
                       amount_sign=None, min_amount=None, max_amount=None, split_status=None,
                       limit=50, offset=0):
-    query = "SELECT * FROM transactions WHERE 1=1"
-    params = {}
+    query = "SELECT * FROM transactions WHERE user_id = :user_id AND 1=1"
+    params = {"user_id": user_id}
 
     if account:
         query += " AND account = :account"
@@ -45,10 +49,10 @@ def get_transactions(account=None, category=None, search=None, date_from=None, d
         rows = conn.execute(text(query), params).mappings().all()
     return [dict(r) for r in rows]
 
-def count_transactions(account=None, category=None, search=None, date_from=None, date_to=None,
+def count_transactions(user_id, account=None, category=None, search=None, date_from=None, date_to=None,
                         amount_sign=None, min_amount=None, max_amount=None, split_status=None):
-    query = "SELECT COUNT(*) FROM transactions WHERE 1=1"
-    params = {}
+    query = "SELECT COUNT(*) FROM transactions WHERE user_id = :user_id AND 1=1"
+    params = {"user_id": user_id}
 
     if account:
         query += " AND account = :account"
@@ -84,28 +88,30 @@ def count_transactions(account=None, category=None, search=None, date_from=None,
         result = conn.execute(text(query), params).scalar()
     return result
 
-def get_categories():
+def get_categories(user_id: int):
     with engine.connect() as conn:
-        rows = conn.execute(text("SELECT DISTINCT category FROM transactions WHERE category IS NOT NULL ORDER BY category")).all()
+        rows = conn.execute(text("SELECT DISTINCT category FROM transactions WHERE user_id = :user_id AND category IS NOT NULL ORDER BY category"), 
+                            {"user_id": user_id}).all()
     return [r[0] for r in rows]
 
-def get_accounts():
+def get_accounts(user_id: int):
     with engine.connect() as conn:
-        rows = conn.execute(text("SELECT DISTINCT account FROM transactions ORDER BY account")).all()
+        rows = conn.execute(text("SELECT DISTINCT account FROM transactions WHERE user_id = :user_id ORDER BY account"), 
+                            {"user_id": user_id}).all()
     return [r[0] for r in rows]
 
 # Split-related functions
-def get_transaction_by_id(transaction_id: str) -> dict | None:
+def get_transaction_by_id(user_id: int, transaction_id: str) -> dict | None:
     with engine.connect() as conn:
         row = conn.execute(
-            text("SELECT * FROM transactions WHERE transactionId = :id"),
-            {"id": transaction_id}
+            text("SELECT * FROM transactions WHERE transactionId = :id AND user_id = :user_id"),
+            {"id": transaction_id, "user_id": user_id}
         ).mappings().first()
     return dict(row) if row else None
 
 # Function to save splits for a specific transaction
-def save_splits(transaction_id: str, splits: list[dict], remainder_category: str = "Other") -> None:
-    original = get_transaction_by_id(transaction_id)
+def save_splits(user_id: int, transaction_id: str, splits: list[dict], remainder_category: str = "Other") -> None:
+    original = get_transaction_by_id(user_id, transaction_id)
     total_amount = abs(original["amount"])
     allocated = sum(s["amount"] for s in splits)
     remainder = round(total_amount - allocated, 2)
@@ -114,77 +120,89 @@ def save_splits(transaction_id: str, splits: list[dict], remainder_category: str
         for s in splits:
             conn.execute(
                 text("""
-                    INSERT INTO transaction_splits (transactionId, category, amount, note)
-                    VALUES (:id, :category, :amount, :note)
+                    INSERT INTO transaction_splits (transactionId, category, amount, note, user_id)
+                    VALUES (:id, :category, :amount, :note, :user_id)
                 """),
-                {"id": transaction_id, "category": s["category"], "amount": s["amount"], "note": s.get("note")}
+                {
+                    "id": transaction_id, 
+                    "category": s["category"], 
+                    "amount": s["amount"], 
+                    "note": s.get("note"), 
+                    "user_id": user_id
+                }
             )
 
         if remainder > 0.01:
             conn.execute(
                 text("""
-                    INSERT INTO transaction_splits (transactionId, category, amount, note)
-                    VALUES (:id, :category, :amount, :note)
-                """),
-                {"id": transaction_id, "category": remainder_category, "amount": remainder, "note": "Auto remainder"}
+                    INSERT INTO transaction_splits (transactionId, category, amount, note, user_id)
+                    VALUES (:id, :category, :amount, :note, :user_id)
+                    """),
+                {
+                    "id": transaction_id,
+                    "category": remainder_category,
+                    "amount": remainder,
+                    "note": "Auto remainder",
+                    "user_id": user_id,
+                }
             )
 
         conn.execute(
-            text("UPDATE transactions SET category = 'Split' WHERE transactionId = :id"),
-            {"id": transaction_id}
+            text("UPDATE transactions SET category = 'Split' WHERE transactionId = :id AND user_id = :user_id"),
+            {"id": transaction_id, "user_id": user_id}
         )
         conn.commit()
 
 # Function to undo splits for a specific transaction
-def undo_split(transaction_id: str) -> None:
+def undo_split(user_id: int, transaction_id: str) -> None:
     with engine.connect() as conn:
         conn.execute(
-            text("DELETE FROM transaction_splits WHERE transactionId = :id"),
-            {"id": transaction_id}
+            text("DELETE FROM transaction_splits WHERE transactionId = :id AND user_id = :user_id"),
+            {"id": transaction_id, "user_id": user_id}
         )
         conn.execute(
-            text("UPDATE transactions SET category = NULL WHERE transactionId = :id"),
-            {"id": transaction_id}
+            text("UPDATE transactions SET category = NULL WHERE transactionId = :id AND user_id = :user_id"),
+            {"id": transaction_id, "user_id": user_id}
         )
         conn.commit()
 
 # Function to get splits for a specific transaction
-def get_splits_for_transaction(transaction_id: str) -> list[dict]:
+def get_splits_for_transaction(user_id: int, transaction_id: str) -> list[dict]:
     with engine.connect() as conn:
         rows = conn.execute(
-            text("SELECT * FROM transaction_splits WHERE transactionId = :id"),
-            {"id": transaction_id}
+            text("SELECT * FROM transaction_splits WHERE transactionId = :id AND user_id = :user_id"),
+            {"id": transaction_id, "user_id": user_id}
         ).mappings().all()
     return [dict(r) for r in rows]
 
 # Normal category update function
-def update_transaction_category(transaction_id: str, category: str) -> bool:
+def update_transaction_category(user_id: int, transaction_id: str, category: str) -> bool:
     with engine.connect() as conn:
         result = conn.execute(
-            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = :id"),
-            {"category": category, "id": transaction_id}
+            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = :id AND user_id = :user_id"),
+            {"category": category, "id": transaction_id, "user_id": user_id}
         )
         conn.commit()
         return result.rowcount > 0
     
 # Bulk update function
-def bulk_update_category(transaction_ids: list[str], category: str) -> int:
+def bulk_update_category(user_id: int, transaction_ids: list[str], category: str) -> int:
     if not transaction_ids:
         return 0
     with engine.connect() as conn:
         result = conn.execute(
-            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = ANY(:ids)"),
-            {"category": category, "ids": transaction_ids}
+            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = ANY(:ids) AND user_id = :user_id"),
+            {"category": category, "ids": transaction_ids, "user_id": user_id}
         )
         conn.commit()
         return result.rowcount
 
 # Function to revert a transaction's category to automatic categorization
-def revert_to_auto(transaction_id: str) -> bool:
+def revert_to_auto(user_id: int, transaction_id: str) -> bool:
     with engine.connect() as conn:
         result = conn.execute(
-            text("UPDATE transactions SET is_manual_category = FALSE WHERE transactionId = :id"),
-            {"id": transaction_id}
+            text("UPDATE transactions SET is_manual_category = FALSE WHERE transactionId = :id AND user_id = :user_id"),
+            {"id": transaction_id, "user_id": user_id}
         )
         conn.commit()
         return result.rowcount > 0

@@ -116,7 +116,6 @@
 </div>
 
 <script>
-const API_KEY = "{{ api_key }}";
 const CATEGORIES = ["Salary","Investments","Groceries","Restaurants/Bars","Transport","Housing","Rents","Health","Subscriptions","Transfers","Shopping","Entertainment","Education/Work","Travel","Other"];
 
 let currentSplitId = null;
@@ -225,7 +224,7 @@ async function loadTransactions() {
     sel.onchange = async () => {
       await fetch(`/api/transactions/${sel.dataset.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+        headers: { "Content-Type": "application/json"},
         body: JSON.stringify({ category: sel.value }),
       });
       loadTransactions();
@@ -236,7 +235,7 @@ async function loadTransactions() {
     btn.onclick = async () => {
       await fetch(`/api/transactions/${btn.dataset.id}/split`, {
         method: "DELETE",
-        headers: { "X-API-Key": API_KEY },
+        headers: { "Content-Type": "application/json"},
       });
       loadTransactions();
     };
@@ -246,7 +245,7 @@ async function loadTransactions() {
     btn.onclick = async () => {
       await fetch(`/api/transactions/${btn.dataset.id}/revert-auto`, {
         method: "POST",
-        headers: { "X-API-Key": API_KEY },
+        headers: { "Content-Type": "application/json"},
       });
       loadTransactions();
     };
@@ -321,7 +320,7 @@ document.getElementById("saveSplitBtn").onclick = async () => {
 
   const res = await fetch(`/api/transactions/${currentSplitId}/split`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+    headers: { "Content-Type": "application/json"},
     body: JSON.stringify({ splits, remainder_category: remainderCategory }),
   });
 
@@ -370,7 +369,7 @@ document.getElementById("bulkApplyBtn").onclick = async () => {
 
   const res = await fetch("/api/transactions/bulk-category", {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ transaction_ids: Array.from(selectedIds), category }),
   });
 

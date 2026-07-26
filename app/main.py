@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from legacy_db.db import create_db, create_splits_table, create_rules_table
-from app.api.routes import uploads, transactions, rules
+from fastapi.responses import RedirectResponse
+from legacy_db.db import create_db, create_splits_table, create_rules_table, create_users_and_ownership
+from app.api.routes import uploads, transactions, rules, auth
 from app.core.config import settings
+from app.core.dependencies import get_current_user
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -15,29 +17,37 @@ async def lifespan(app: FastAPI):
     create_db()
     create_splits_table()
     create_rules_table()
+    create_users_and_ownership()
     yield
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.include_router(auth.router)
 app.include_router(uploads.router)
 app.include_router(transactions.router)
 app.include_router(rules.router)
 
 @app.get("/")
-async def dashboard(request: Request):
-    return templates.TemplateResponse(request, "dashboard.html", {"active_page": "dashboard"})
+async def dashboard(request: Request, user: dict = Depends(get_current_user)):
+    return templates.TemplateResponse(request, "dashboard.html", {"active_page": "dashboard", "user": user})
 
 @app.get("/upload")
-async def upload_page(request: Request):
+async def upload_page(request: Request, user: dict = Depends(get_current_user)):
     return templates.TemplateResponse(
         request, "upload.html",
-        {"active_page": "upload", "api_key": settings.ADMIN_API_KEY}
+        {"active_page": "upload", "user": user}
     )
 
 @app.get("/transactions")
-async def transactions_page(request: Request):
-    return templates.TemplateResponse(request, "transactions.html", {"active_page": "transactions", "api_key": settings.ADMIN_API_KEY})
+async def transactions_page(request: Request, user: dict = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        request, "transactions.html",
+        {"active_page": "transactions", "user": user}
+    )
 
 @app.get("/rules")
-async def rules_page(request: Request):
-    return templates.TemplateResponse(request, "rules.html", {"active_page": "rules", "api_key": settings.ADMIN_API_KEY})
+async def rules_page(request: Request, user: dict = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        request, "rules.html",
+        {"active_page": "rules", "user": user}
+    )

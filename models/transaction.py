@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -19,4 +19,6 @@ class Transaction:
     account: str
     sourceFile: str
     category: Optional[str] = None
+    is_manual_category: bool = False
+    user_id: Optional[int] = None
     

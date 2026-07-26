@@ -8,10 +8,16 @@
 <body>
   <nav class="sidebar">
     <h2>Expense Tracker</h2>
+    <div style="padding:0 24px 16px; font-size:13px; color:#b7bfcc;">
+      {{ user.email if user else "" }}
+    </div>
     <a href="/" class="{{ 'active' if active_page == 'dashboard' }}">Dashboard</a>
     <a href="/upload" class="{{ 'active' if active_page == 'upload' }}">Upload Files</a>
     <a href="/transactions" class="{{ 'active' if active_page == 'transactions' }}">Transactions</a>
     <a href="/rules" class="{{ 'active' if active_page == 'rules' }}">Rules</a>
+    <form method="post" action="/logout" style="padding:16px 24px;">
+      <button class="secondary" type="submit" style="width:100%;">Logout</button>
+    </form>
   </nav>
   <main class="main-content">
     {% block content %}{% endblock %}

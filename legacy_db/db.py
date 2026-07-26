@@ -16,7 +16,7 @@ def create_db():
     with get_engine().connect() as conn:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS transactions (
-                transactionId TEXT PRIMARY KEY,
+                transactionId TEXT,
                 date DATE NOT NULL,
                 transactionType TEXT NOT NULL,
                 description TEXT,
@@ -25,7 +25,9 @@ def create_db():
                 account TEXT NOT NULL,
                 sourceFile TEXT NOT NULL,
                 category TEXT,
-                is_manual_category BOOLEAN DEFAULT FALSE
+                is_manual_category BOOLEAN DEFAULT FALSE,
+                user_id INTEGER REFERENCES users(id),
+                UNIQUE (user_id, transactionId)
             )   
         """))
         conn.commit()
@@ -36,10 +38,11 @@ def create_splits_table():
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS transaction_splits (
                 id SERIAL PRIMARY KEY,
-                transactionId TEXT NOT NULL REFERENCES transactions(transactionId),
+                transactionId TEXT NOT NULL,
                 category TEXT NOT NULL,
                 amount FLOAT NOT NULL,
-                note TEXT
+                note TEXT,
+                user_id INTEGER REFERENCES users(id)
             )
         """))
         conn.commit()
@@ -51,12 +54,25 @@ def create_rules_table():
         CREATE TABLE IF NOT EXISTS category_rules (
             id SERIAL PRIMARY KEY,
             category TEXT NOT NULL,
-            keyword TEXT NOT NULL
+            keyword TEXT NOT NULL,
+            user_id INTEGER REFERENCES users(id)
         )
         """))
         conn.commit()
         print("✅ Rules table ready")
 
+def create_users_and_ownership():
+    with get_engine().connect() as conn:
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """))
+        conn.commit()
+        print("✅ Users table ready")
 
 def insert_transactions(transactions: list[Transaction]):
     inserted = 0
@@ -65,9 +81,9 @@ def insert_transactions(transactions: list[Transaction]):
         for t in transactions:
             result = conn.execute(text("""
                 INSERT INTO transactions 
-                (transactionId, date, transactionType, description, amount, currency, account, sourceFile, category)
-                VALUES (:id, :date, :type, :desc, :amount, :currency, :account, :source, :category)
-                ON CONFLICT (transactionId) DO NOTHING
+                (transactionId, date, transactionType, description, amount, currency, account, sourceFile, category, user_id)
+                VALUES (:id, :date, :type, :desc, :amount, :currency, :account, :source, :category, :user_id)
+                ON CONFLICT (user_id, transactionId) DO NOTHING
             """), {
                 "id": t.transactionId,
                 "date": t.date.date() if t.date else None,
@@ -77,7 +93,8 @@ def insert_transactions(transactions: list[Transaction]):
                 "currency": t.currency,
                 "account": t.account,
                 "source": t.sourceFile,
-                "category": t.category
+                "category": t.category,
+                "user_id": t.user_id
             })
             if result.rowcount > 0:
                 inserted += 1

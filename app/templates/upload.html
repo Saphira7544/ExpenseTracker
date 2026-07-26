@@ -24,7 +24,7 @@
 </div>
 
 <script>
-const API_KEY = "{{ api_key }}";
+
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
 const fileList = document.getElementById("fileList");
@@ -72,7 +72,7 @@ uploadBtn.onclick = async () => {
   try {
     const res = await fetch("/api/uploads", {
       method: "POST",
-      headers: { "X-API-Key": API_KEY },
+      headers: { "Content-Type": "application/json" },
       body: formData,
     });
 

@@ -15,7 +15,10 @@ class Settings:
     )
 
     UPLOAD_DIR = os.getenv("UPLOAD_DIR", "storage/uploads")
-    ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "change-me")
+    
+    APP_SECRET_KEY = os.getenv("APP_SECRET_KEY", "change-this-in-production")
+    SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "expense_tracker_session")
+
     ENABLE_LLM_CATEGORIZATION = os.getenv("ENABLE_LLM_CATEGORIZATION", "true").lower() == "true"
 
 settings = Settings()

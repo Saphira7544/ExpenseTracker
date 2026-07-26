@@ -32,7 +32,6 @@
 </div>
 
 <script>
-const API_KEY = "{{ api_key }}";
 const CATEGORIES = ["Salary","Investments","Groceries","Restaurants/Bars","Transport","Housing","Rents","Health","Subscriptions","Transfers","Shopping","Entertainment","Education/Work","Travel","Other"];
 
 async function loadRules() {
@@ -55,7 +54,7 @@ async function loadRules() {
 
   document.querySelectorAll(".delete-rule-btn").forEach(btn => {
     btn.onclick = async () => {
-      await fetch(`/api/rules/${btn.dataset.id}`, { method: "DELETE", headers: { "X-API-Key": API_KEY } });
+      await fetch(`/api/rules/${btn.dataset.id}`, { method: "DELETE", headers: { } });
       loadRules();
     };
   });
@@ -68,7 +67,7 @@ document.getElementById("addRuleBtn").onclick = async () => {
 
   await fetch("/api/rules", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+    headers: { "Content-Type": "application/json"},
     body: JSON.stringify({ category, keyword }),
   });
 
@@ -98,7 +97,7 @@ document.getElementById("previewRerunBtn").onclick = async () => {
 document.getElementById("applyRerunBtn").onclick = async () => {
   const res = await fetch("/api/rules/apply-rerun", {
     method: "POST",
-    headers: { "X-API-Key": API_KEY },
+    headers: { "Content-Type": "application/json" },
   });
   const data = await res.json();
   document.getElementById("rerunSummary").textContent = `Applied. ${data.updated} transactions updated.`;

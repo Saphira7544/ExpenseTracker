@@ -202,12 +202,19 @@ async function loadTransactions() {
       <td class="${amountClass}">${tx.amount}</td>
       <td>${tx.currency}</td>
       <td>${tx.account}</td>
-      <td><span class="badge ${catClass(tx.category)}">${tx.category || "Uncategorized"}</span></td>
+      <td>
+      <span class="badge ${catClass(tx.category)}">${tx.category || "Uncategorized"}</span>
+      ${tx.is_manual_category ? '<span style="font-size:11px; color:#6b7280; margin-left:4px;">(manual)</span>' : ''}
+      </td>
       <td>
         ${isSplit
           ? `<button class="danger undo-split-btn" data-id="${tx.transactionid}">Undo split</button>`
           : `<button class="secondary split-btn" data-id="${tx.transactionid}" data-amount="${tx.amount}">Split</button>
-             <select class="cat-select" data-id="${tx.transactionid}" style="width:auto; display:inline-block; margin-left:6px;">${catOptions}</select>`
+            <select class="cat-select" data-id="${tx.transactionid}" style="width:auto; display:inline-block; margin-left:6px;">${catOptions}</select>
+            ${tx.is_manual_category 
+              ? `<button class="secondary revert-btn" data-id="${tx.transactionid}" style="margin-left:6px;">Revert to auto</button>` 
+              : ''
+            }`
         }
       </td>
     `;
@@ -229,6 +236,16 @@ async function loadTransactions() {
     btn.onclick = async () => {
       await fetch(`/api/transactions/${btn.dataset.id}/split`, {
         method: "DELETE",
+        headers: { "X-API-Key": API_KEY },
+      });
+      loadTransactions();
+    };
+  });
+
+  document.querySelectorAll(".revert-btn").forEach(btn => {
+    btn.onclick = async () => {
+      await fetch(`/api/transactions/${btn.dataset.id}/revert-auto`, {
+        method: "POST",
         headers: { "X-API-Key": API_KEY },
       });
       loadTransactions();
@@ -384,6 +401,7 @@ document.getElementById("resetFilterBtn").onclick = () => {
   currentOffset = 0;
   loadTransactions();
 };
+
 loadFilters();
 loadTransactions();
 

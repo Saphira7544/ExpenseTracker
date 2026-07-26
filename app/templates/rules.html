@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Categorization Rules</h1>
+
+<div class="card">
+  <h1 style="font-size:16px;">Add rule</h1>
+  <div style="display:flex; gap:8px; margin-top:8px;">
+    <select id="newRuleCategory"></select>
+    <input type="text" id="newRuleKeyword" placeholder="keyword (e.g. interactive brokers)">
+    <button class="primary" id="addRuleBtn">Add rule</button>
+  </div>
+</div>
+
+<div class="card">
+  <h1 style="font-size:16px;">Existing rules</h1>
+  <table>
+    <thead><tr><th>Category</th><th>Keyword</th><th>Actions</th></tr></thead>
+    <tbody id="rulesBody"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h1 style="font-size:16px;">Rerun rules on all transactions</h1>
+  <p style="font-size:13px; color:#6b7280;">Manually edited transactions are skipped automatically.</p>
+  <button class="secondary" id="previewRerunBtn">Preview affected transactions</button>
+  <button class="primary" id="applyRerunBtn" style="display:none;">Apply changes</button>
+  <p id="rerunSummary" style="margin-top:8px; font-size:13px;"></p>
+  <table id="previewTable" style="display:none;">
+    <thead><tr><th>Description</th><th>Old category</th><th>New category</th></tr></thead>
+    <tbody id="previewBody"></tbody>
+  </table>
+</div>
+
+<script>
+const API_KEY = "{{ api_key }}";
+const CATEGORIES = ["Salary","Investments","Groceries","Restaurants/Bars","Transport","Housing","Rents","Health","Subscriptions","Transfers","Shopping","Entertainment","Education/Work","Travel","Other"];
+
+async function loadRules() {
+  const catSel = document.getElementById("newRuleCategory");
+  catSel.innerHTML = CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join("");
+
+  const res = await fetch("/api/rules");
+  const rules = await res.json();
+  const tbody = document.getElementById("rulesBody");
+  tbody.innerHTML = "";
+  rules.forEach(r => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="badge cat-${r.category.replace(/[\/\s]/g, "-")}">${r.category}</span></td>
+      <td>${r.keyword}</td>
+      <td><button class="danger delete-rule-btn" data-id="${r.id}">Delete</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.querySelectorAll(".delete-rule-btn").forEach(btn => {
+    btn.onclick = async () => {
+      await fetch(`/api/rules/${btn.dataset.id}`, { method: "DELETE", headers: { "X-API-Key": API_KEY } });
+      loadRules();
+    };
+  });
+}
+
+document.getElementById("addRuleBtn").onclick = async () => {
+  const category = document.getElementById("newRuleCategory").value;
+  const keyword = document.getElementById("newRuleKeyword").value.trim();
+  if (!keyword) return;
+
+  await fetch("/api/rules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+    body: JSON.stringify({ category, keyword }),
+  });
+
+  document.getElementById("newRuleKeyword").value = "";
+  loadRules();
+};
+
+let lastPreview = [];
+
+document.getElementById("previewRerunBtn").onclick = async () => {
+  const res = await fetch("/api/rules/preview-rerun");
+  lastPreview = await res.json();
+
+  const tbody = document.getElementById("previewBody");
+  tbody.innerHTML = "";
+  lastPreview.forEach(row => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${row.description}</td><td>${row.old_category || "—"}</td><td>${row.new_category}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById("rerunSummary").textContent = `${lastPreview.length} transactions would change.`;
+  document.getElementById("previewTable").style.display = lastPreview.length ? "table" : "none";
+  document.getElementById("applyRerunBtn").style.display = lastPreview.length ? "inline-block" : "none";
+};
+
+document.getElementById("applyRerunBtn").onclick = async () => {
+  const res = await fetch("/api/rules/apply-rerun", {
+    method: "POST",
+    headers: { "X-API-Key": API_KEY },
+  });
+  const data = await res.json();
+  document.getElementById("rerunSummary").textContent = `Applied. ${data.updated} transactions updated.`;
+  document.getElementById("previewTable").style.display = "none";
+  document.getElementById("applyRerunBtn").style.display = "none";
+};
+
+loadRules();
+</script>
+{% endblock %}

@@ -5,7 +5,7 @@ from app.core.security import verify_api_key
 from app.services.transactions import (
     get_transactions, get_categories, get_accounts, update_transaction_category,
     get_transaction_by_id, save_splits, get_splits_for_transaction, undo_split,
-    count_transactions, bulk_update_category
+    count_transactions, bulk_update_category, revert_to_auto
 )
 
 router = APIRouter()
@@ -52,11 +52,6 @@ async def update_category(transaction_id: str, payload: CategoryUpdate, api_key:
 
 
 # Split-related endpoints
-from app.services.transactions import (
-    get_transactions, get_categories, get_accounts, update_transaction_category,
-    get_transaction_by_id, save_splits, get_splits_for_transaction, undo_split
-)
-
 class SplitItem(BaseModel):
     category: str
     amount: float
@@ -84,6 +79,8 @@ async def remove_split(transaction_id: str, api_key: str = Depends(verify_api_ke
     undo_split(transaction_id)
     return {"status": "ok", "transactionId": transaction_id}
 
+
+
 @router.get("/api/transactions/count")
 async def transactions_count(
     account: Optional[str] = None,
@@ -100,3 +97,9 @@ async def transactions_count(
                                 amount_sign, min_amount, max_amount, split_status)
     return {"total": total}
 
+@router.post("/api/transactions/{transaction_id}/revert-auto")
+async def revert_category(transaction_id: str, api_key: str = Depends(verify_api_key)):
+    reverted = revert_to_auto(transaction_id)
+    if not reverted:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return {"transactionId": transaction_id, "is_manual_category": False}

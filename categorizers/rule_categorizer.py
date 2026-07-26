@@ -1,15 +1,17 @@
-RULES = {
-    "Investments": ["interactive brokers", "ib llc"],
-    "Groceries":   ["migros", "coop", "aldi", "lidl", "denner"],
-    "Transport":   ["sbb", "shell", "bp", "esso", "galp"],
-}
+from app.db.session import engine
+from sqlalchemy import text
 
+def _get_rules_from_db():
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT category, keyword FROM category_rules")).mappings().all()
+    return [dict(r) for r in rows]
 
 def rule_based_categorize(transactions) -> None:
+    rules = _get_rules_from_db()
     for t in transactions:
-        text = t.description.lower()
-        for category, keywords in RULES.items():
-            if any(kw in text for kw in keywords):
-                t.category = category
+        text_lower = t.description.lower()
+        for rule in rules:
+            if rule["keyword"] in text_lower:
+                t.category = rule["category"]
                 break
 

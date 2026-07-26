@@ -24,7 +24,8 @@ def create_db():
                 currency TEXT NOT NULL,
                 account TEXT NOT NULL,
                 sourceFile TEXT NOT NULL,
-                category TEXT
+                category TEXT,
+                is_manual_category BOOLEAN DEFAULT FALSE
             )   
         """))
         conn.commit()
@@ -43,6 +44,19 @@ def create_splits_table():
         """))
         conn.commit()
         print("✅ Splits table ready")
+
+def create_rules_table():
+    with get_engine().connect() as conn:
+        conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS category_rules (
+            id SERIAL PRIMARY KEY,
+            category TEXT NOT NULL,
+            keyword TEXT NOT NULL
+        )
+        """))
+        conn.commit()
+        print("✅ Rules table ready")
+
 
 def insert_transactions(transactions: list[Transaction]):
     inserted = 0

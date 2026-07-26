@@ -94,15 +94,6 @@ def get_accounts():
         rows = conn.execute(text("SELECT DISTINCT account FROM transactions ORDER BY account")).all()
     return [r[0] for r in rows]
 
-def update_transaction_category(transaction_id: str, category: str) -> bool:
-    with engine.connect() as conn:
-        result = conn.execute(
-            text("UPDATE transactions SET category = :category WHERE transactionId = :id"),
-            {"category": category, "id": transaction_id}
-        )
-        conn.commit()
-        return result.rowcount > 0
-
 # Split-related functions
 def get_transaction_by_id(transaction_id: str) -> dict | None:
     with engine.connect() as conn:
@@ -112,6 +103,7 @@ def get_transaction_by_id(transaction_id: str) -> dict | None:
         ).mappings().first()
     return dict(row) if row else None
 
+# Function to save splits for a specific transaction
 def save_splits(transaction_id: str, splits: list[dict], remainder_category: str = "Other") -> None:
     original = get_transaction_by_id(transaction_id)
     total_amount = abs(original["amount"])
@@ -143,6 +135,7 @@ def save_splits(transaction_id: str, splits: list[dict], remainder_category: str
         )
         conn.commit()
 
+# Function to undo splits for a specific transaction
 def undo_split(transaction_id: str) -> None:
     with engine.connect() as conn:
         conn.execute(
@@ -155,6 +148,7 @@ def undo_split(transaction_id: str) -> None:
         )
         conn.commit()
 
+# Function to get splits for a specific transaction
 def get_splits_for_transaction(transaction_id: str) -> list[dict]:
     with engine.connect() as conn:
         rows = conn.execute(
@@ -163,15 +157,34 @@ def get_splits_for_transaction(transaction_id: str) -> list[dict]:
         ).mappings().all()
     return [dict(r) for r in rows]
 
+# Normal category update function
+def update_transaction_category(transaction_id: str, category: str) -> bool:
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = :id"),
+            {"category": category, "id": transaction_id}
+        )
+        conn.commit()
+        return result.rowcount > 0
+    
 # Bulk update function
 def bulk_update_category(transaction_ids: list[str], category: str) -> int:
     if not transaction_ids:
         return 0
     with engine.connect() as conn:
         result = conn.execute(
-            text("UPDATE transactions SET category = :category WHERE transactionId = ANY(:ids)"),
+            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = ANY(:ids)"),
             {"category": category, "ids": transaction_ids}
         )
         conn.commit()
         return result.rowcount
 
+# Function to revert a transaction's category to automatic categorization
+def revert_to_auto(transaction_id: str) -> bool:
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("UPDATE transactions SET is_manual_category = FALSE WHERE transactionId = :id"),
+            {"id": transaction_id}
+        )
+        conn.commit()
+        return result.rowcount > 0

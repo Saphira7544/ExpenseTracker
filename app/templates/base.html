@@ -4,6 +4,13 @@
   <meta charset="UTF-8">
   <title>Expense Tracker</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
 </head>
 <body>
   <nav class="sidebar">
@@ -15,6 +22,8 @@
     <a href="/upload" class="{{ 'active' if active_page == 'upload' }}">Upload Files</a>
     <a href="/transactions" class="{{ 'active' if active_page == 'transactions' }}">Transactions</a>
     <a href="/rules" class="{{ 'active' if active_page == 'rules' }}">Rules</a>
+    <a href="/networth" class="{{ 'active' if active_page == 'networth' }}">Net Worth</a>
+    <a href="/networth/config" class="{{ 'active' if active_page == 'networth' }}">Net Worth Config</a>
     <form method="post" action="/logout" style="padding:16px 24px;">
       <button class="secondary" type="submit" style="width:100%;">Logout</button>
     </form>

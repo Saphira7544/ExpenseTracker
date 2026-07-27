@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Net Worth Config</h1>
+
+<div class="card">
+  <p>Manage dropdown values used in the Net Worth module.</p>
+</div>
+
+<div id="configSections"></div>
+
+<script>
+const TABLES = [
+  ["institutions", "Institutions"],
+  ["asset_categories", "Asset Categories"],
+  ["account_types", "Account Types"],
+  ["currencies", "Currencies"],
+  ["liquidity_statuses", "Liquidity Statuses"],
+];
+
+async function loadConfig() {
+  const res = await fetch("/api/networth/lookups");
+  const data = await res.json();
+  const root = document.getElementById("configSections");
+  root.innerHTML = "";
+
+  TABLES.forEach(([key, label]) => {
+    const items = data[key] || [];
+    const section = document.createElement("div");
+    section.className = "card";
+    section.innerHTML = `
+      <h2 style="font-size:18px; margin-bottom:12px;">${label}</h2>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input id="new-${key}-value" placeholder="New ${label.slice(0, -1)}" />
+        <input id="new-${key}-sort" type="number" placeholder="Sort" value="0" style="width:100px;" />
+        <button onclick="addLookup('${key}')">Add</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Value</th>
+            <th>Sort</th>
+            <th>Active</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(item => `
+            <tr>
+              <td><input id="${key}-value-${item.id}" value="${item.value}" /></td>
+              <td><input id="${key}-sort-${item.id}" type="number" value="${item.sort_order}" style="width:90px;" /></td>
+              <td><input id="${key}-active-${item.id}" type="checkbox" ${item.is_active ? "checked" : ""} /></td>
+              <td>
+                <button onclick="saveLookup('${key}', ${item.id})">Save</button>
+                <button onclick="deleteLookup('${key}', ${item.id})">Delete</button>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+    root.appendChild(section);
+  });
+}
+
+async function addLookup(tableKey) {
+  const value = document.getElementById(`new-${tableKey}-value`).value;
+  const sortOrder = Number(document.getElementById(`new-${tableKey}-sort`).value || 0);
+  if (!value.trim()) return;
+
+  await fetch(`/api/networth/lookups/${tableKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value, sort_order: sortOrder }),
+  });
+
+  loadConfig();
+}
+
+async function saveLookup(tableKey, id) {
+  const value = document.getElementById(`${tableKey}-value-${id}`).value;
+  const sort_order = Number(document.getElementById(`${tableKey}-sort-${id}`).value || 0);
+  const is_active = document.getElementById(`${tableKey}-active-${id}`).checked;
+
+  await fetch(`/api/networth/lookups/${tableKey}/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value, sort_order, is_active }),
+  });
+
+  loadConfig();
+}
+
+async function deleteLookup(tableKey, id) {
+  await fetch(`/api/networth/lookups/${tableKey}/${id}`, {
+    method: "DELETE",
+  });
+
+  loadConfig();
+}
+
+loadConfig();
+</script>
+{% endblock %}

@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Net Worth</h1>
+
+<div class="card">
+  <div class="toolbar">
+    <button class="btn" onclick="showAccountForm()">+ Add Account</button>
+    <button class="btn" onclick="showValuationForm()">+ Add Valuation</button>
+    <button class="btn ghost" onclick="computeSnapshot()">Compute Snapshot</button>
+    <button class="btn ghost" onclick="showSnapshotForm()">+ Add Snapshot</button>
+    <a href="/networth/config"><button class="btn small">Manage Config</button></a>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="font-size:18px;">Summary</h2>
+  <div id="summaryBox"></div>
+</div>
+
+<div class="card" id="accountFormCard" style="display:none;">
+  <h2 style="font-size:18px;">Account Form</h2>
+  <input type="hidden" id="account-id" />
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+    <input id="account-name" placeholder="Account Name" />
+    <select id="account-institution"></select>
+    <select id="account-category"></select>
+    <select id="account-type"></select>
+    <select id="account-currency"></select>
+    <select id="account-liquidity"></select>
+    <input id="account-ticker" placeholder="Ticker/Symbol" />
+    <label><input id="account-active" type="checkbox" checked /> Active</label>
+  </div>
+  <div style="margin-top:12px;">
+    <button onclick="saveAccount()">Save Account</button>
+    <button onclick="hideAccountForm()">Cancel</button>
+  </div>
+</div>
+
+<div class="card" id="valuationFormCard" style="display:none;">
+  <h2 style="font-size:18px;">Valuation Form</h2>
+  <input type="hidden" id="valuation-id" />
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+    <select id="valuation-account"></select>
+    <input id="valuation-date" type="date" />
+    <input id="valuation-quantity" type="number" step="any" placeholder="Quantity" />
+    <input id="valuation-avg-purchase" type="number" step="any" placeholder="Avg Purchase Price" />
+    <input id="valuation-current-price" type="number" step="any" placeholder="Current Price" />
+    <input id="valuation-original-value" type="number" step="any" placeholder="Current Value Original" />
+    <input id="valuation-fx" type="number" step="any" placeholder="FX to CHF" />
+    <input id="valuation-chf" type="number" step="any" placeholder="Current Value CHF" />
+    <input id="valuation-source" placeholder="Source" value="manual" />
+    <input id="valuation-note" placeholder="Note" />
+  </div>
+  <div style="margin-top:12px;">
+    <button onclick="saveValuation()">Save Valuation</button>
+    <button onclick="hideValuationForm()">Cancel</button>
+  </div>
+</div>
+
+<div class="card" id="snapshotFormCard" style="display:none;">
+  <h2 style="font-size:18px;">Snapshot Form</h2>
+  <input type="hidden" id="snapshot-id" />
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+    <input id="snapshot-date" type="date" />
+    <input id="snapshot-liquid" type="number" step="any" placeholder="Total Liquid CHF" />
+    <input id="snapshot-illiquid" type="number" step="any" placeholder="Total Illiquid CHF" />
+    <input id="snapshot-total" type="number" step="any" placeholder="Total Net Worth CHF" />
+    <input id="snapshot-mom-chf" type="number" step="any" placeholder="MoM Change CHF" />
+    <input id="snapshot-mom-pct" type="number" step="any" placeholder="MoM Change %" />
+    <input id="snapshot-notes" placeholder="Notes" />
+  </div>
+  <div style="margin-top:12px;">
+    <button onclick="saveSnapshot()">Save Snapshot</button>
+    <button onclick="hideSnapshotForm()">Cancel</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="font-size:18px;">Accounts</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Institution</th>
+        <th>Category</th>
+        <th>Type</th>
+        <th>Currency</th>
+        <th>Liquidity</th>
+        <th>Ticker</th>
+        <th>Active</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="accountsBody"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="font-size:18px;">Valuations</h2>
+  <table>
+    <thead>
+      <tr>
+        <tr>
+          <th>Account</th>
+          <th>Date</th>
+          <th>Quantity</th>
+          <th>Value (orig)</th>
+          <th>FX to CHF</th>
+          <th>Value (CHF)</th>
+          <th>Liquidity</th>
+          <th>Actions</th>
+        </tr>  
+      </tr>
+    </thead>
+    <tbody id="valuationsBody"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="font-size:18px;">Snapshots</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Liquid</th>
+        <th>Illiquid</th>
+        <th>Total</th>
+        <th>MoM CHF</th>
+        <th>MoM %</th>
+        <th>Notes</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="snapshotsBody"></tbody>
+  </table>
+</div>
+
+<script>
+let dashboardData = null;
+
+function fillSelect(selectId, items, placeholder = "-- Select --", valueField = "id", labelField = "value") {
+  const select = document.getElementById(selectId);
+  select.innerHTML = `<option value="">${placeholder}</option>`;
+  items.filter(x => x.is_active !== false).forEach(item => {
+    const option = document.createElement("option");
+    option.value = item[valueField];
+    option.textContent = item[labelField];
+    select.appendChild(option);
+  });
+}
+
+function populateLookups(lookups, accounts) {
+  fillSelect("account-institution", lookups.institutions);
+  fillSelect("account-category", lookups.asset_categories);
+  fillSelect("account-type", lookups.account_types);
+  fillSelect("account-currency", lookups.currencies);
+  fillSelect("account-liquidity", lookups.liquidity_statuses);
+
+  const valuationAccount = document.getElementById("valuation-account");
+  valuationAccount.innerHTML = `<option value="">-- Select Account --</option>`;
+  accounts.forEach(a => {
+    const option = document.createElement("option");
+    option.value = a.id;
+    option.textContent = a.account_name;
+    valuationAccount.appendChild(option);
+  });
+}
+
+async function loadDashboard() {
+  const res = await fetch("/api/networth/dashboard");
+  dashboardData = await res.json();
+
+  populateLookups(dashboardData.lookups, dashboardData.accounts);
+
+  const summary = document.getElementById("summaryBox");
+  if (dashboardData.latest_snapshot) {
+    const s = dashboardData.latest_snapshot;
+    summary.innerHTML = `
+      <div style="display:flex; gap:16px; flex-wrap:wrap;">
+        <div><strong>Total:</strong> CHF ${Number(s.total_networth_chf).toFixed(2)}</div>
+        <div><strong>Liquid:</strong> CHF ${Number(s.total_liquid_chf).toFixed(2)}</div>
+        <div><strong>Illiquid:</strong> CHF ${Number(s.total_illiquid_chf).toFixed(2)}</div>
+        <div><strong>Date:</strong> ${s.snapshot_date}</div>
+      </div>
+    `;
+  } else {
+    summary.innerHTML = `<p>No snapshot data yet.</p>`;
+  }
+
+  const accountsBody = document.getElementById("accountsBody");
+  accountsBody.innerHTML = dashboardData.accounts.map(a => `
+    <tr>
+      <td>${a.account_name}</td>
+      <td>${a.institution || ""}</td>
+      <td>${a.asset_category || ""}</td>
+      <td>${a.account_type || ""}</td>
+      <td>${a.currency || ""}</td>
+      <td>${a.liquidity_status || ""}</td>
+      <td>${a.ticker_symbol || ""}</td>
+      <td>${a.is_active ? "Yes" : "No"}</td>
+      <td class="actions">
+        <button class="icon-btn" title="Edit" onclick="editAccount(${a.id})">
+          <i class="fa-regular fa-pen-to-square"></i>
+        </button>
+        <button class="icon-btn danger" title="Delete" onclick="deleteAccount(${a.id})">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </td>
+    </tr>
+  `).join("");
+
+  const valuationsBody = document.getElementById("valuationsBody");
+  valuationsBody.innerHTML = dashboardData.valuations.map(v => `
+    <tr>
+      <td>${v.account_name}</td>
+      <td>${v.valuation_date}</td>
+      <td class="numeric">${v.quantity == null ? "" : Number(v.quantity).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      <td class="numeric">${v.current_value_original == null ? "" : `${v.currency || ""} ${Number(v.current_value_original).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`}</td>
+      <td class="numeric">${v.exchange_rate_to_chf == null ? "" : Number(v.exchange_rate_to_chf).toFixed(4)}</td>
+      <td class="numeric strong">CHF ${Number(v.current_value_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      <td>${v.liquidity_status || ""}</td>
+      <td class="actions">
+        <button class="icon-btn" title="Edit" onclick="editValuation(${v.id})">
+          <i class="fa-regular fa-pen-to-square"></i>
+        </button>
+        <button class="icon-btn danger" title="Delete" onclick="deleteValuation(${v.id})">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </td>
+    </tr>
+  `).join("");
+
+  const snapshotsBody = document.getElementById("snapshotsBody");
+  snapshotsBody.innerHTML = dashboardData.snapshots.map(s => `
+    <tr>
+      <td>${s.snapshot_date}</td>
+      <td class="liquid-value">CHF ${Number(s.total_liquid_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      <td class="illiquid-value">CHF ${Number(s.total_illiquid_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      <td class="total-value">CHF ${Number(s.total_networth_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      <td class="mom-value">${s.mom_change_chf == null ? "" : "CHF " + Number(s.mom_change_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      <td class="mom-pct">${s.mom_change_pct == null ? "" : Number(s.mom_change_pct).toFixed(2) + "%"}</td>
+      <td>${s.notes || ""}</td>
+      <td class="actions">
+        <button class="icon-btn" title="Edit" onclick="editSnapshot(${s.id})">
+          <i class="fa-regular fa-pen-to-square"></i>
+        </button>
+        <button class="icon-btn danger" title="Delete" onclick="deleteSnapshot(${s.id})">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function showAccountForm() { document.getElementById("accountFormCard").style.display = "block"; }
+function hideAccountForm() { document.getElementById("accountFormCard").style.display = "none"; clearAccountForm(); }
+function showValuationForm() { document.getElementById("valuationFormCard").style.display = "block"; }
+function hideValuationForm() { document.getElementById("valuationFormCard").style.display = "none"; clearValuationForm(); }
+function showSnapshotForm() { document.getElementById("snapshotFormCard").style.display = "block"; }
+function hideSnapshotForm() { document.getElementById("snapshotFormCard").style.display = "none"; clearSnapshotForm(); }
+
+function clearAccountForm() {
+  document.getElementById("account-id").value = "";
+  document.getElementById("account-name").value = "";
+  document.getElementById("account-institution").value = "";
+  document.getElementById("account-category").value = "";
+  document.getElementById("account-type").value = "";
+  document.getElementById("account-currency").value = "";
+  document.getElementById("account-liquidity").value = "";
+  document.getElementById("account-ticker").value = "";
+  document.getElementById("account-active").checked = true;
+}
+
+function clearValuationForm() {
+  document.getElementById("valuation-id").value = "";
+  document.getElementById("valuation-account").value = "";
+  document.getElementById("valuation-date").value = "";
+  document.getElementById("valuation-quantity").value = "";
+  document.getElementById("valuation-avg-purchase").value = "";
+  document.getElementById("valuation-current-price").value = "";
+  document.getElementById("valuation-original-value").value = "";
+  document.getElementById("valuation-fx").value = "";
+  document.getElementById("valuation-chf").value = "";
+  document.getElementById("valuation-source").value = "manual";
+  document.getElementById("valuation-note").value = "";
+}
+
+function clearSnapshotForm() {
+  document.getElementById("snapshot-id").value = "";
+  document.getElementById("snapshot-date").value = "";
+  document.getElementById("snapshot-liquid").value = "";
+  document.getElementById("snapshot-illiquid").value = "";
+  document.getElementById("snapshot-total").value = "";
+  document.getElementById("snapshot-mom-chf").value = "";
+  document.getElementById("snapshot-mom-pct").value = "";
+  document.getElementById("snapshot-notes").value = "";
+}
+
+async function saveAccount() {
+  const id = document.getElementById("account-id").value;
+  const payload = {
+    account_name: document.getElementById("account-name").value,
+    institution_id: Number(document.getElementById("account-institution").value) || null,
+    asset_category_id: Number(document.getElementById("account-category").value) || null,
+    account_type_id: Number(document.getElementById("account-type").value) || null,
+    currency_id: Number(document.getElementById("account-currency").value) || null,
+    liquidity_status_id: Number(document.getElementById("account-liquidity").value) || null,
+    ticker_symbol: document.getElementById("account-ticker").value,
+    is_active: document.getElementById("account-active").checked,
+  };
+
+  await fetch(id ? `/api/networth/accounts/${id}` : "/api/networth/accounts", {
+    method: id ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  hideAccountForm();
+  loadDashboard();
+}
+
+function editAccount(id) {
+  const a = dashboardData.accounts.find(x => x.id === id);
+  showAccountForm();
+  document.getElementById("account-id").value = a.id;
+  document.getElementById("account-name").value = a.account_name || "";
+  document.getElementById("account-institution").value = a.institution_id || "";
+  document.getElementById("account-category").value = a.asset_category_id || "";
+  document.getElementById("account-type").value = a.account_type_id || "";
+  document.getElementById("account-currency").value = a.currency_id || "";
+  document.getElementById("account-liquidity").value = a.liquidity_status_id || "";
+  document.getElementById("account-ticker").value = a.ticker_symbol || "";
+  document.getElementById("account-active").checked = a.is_active;
+}
+
+async function deleteAccount(id) {
+  await fetch(`/api/networth/accounts/${id}`, { method: "DELETE" });
+  loadDashboard();
+}
+
+async function saveValuation() {
+  const id = document.getElementById("valuation-id").value;
+  const payload = {
+    account_id: Number(document.getElementById("valuation-account").value),
+    valuation_date: document.getElementById("valuation-date").value,
+    quantity: parseFloat(document.getElementById("valuation-quantity").value) || null,
+    avg_purchase_price: parseFloat(document.getElementById("valuation-avg-purchase").value) || null,
+    current_price: parseFloat(document.getElementById("valuation-current-price").value) || null,
+    current_value_original: parseFloat(document.getElementById("valuation-original-value").value) || null,
+    exchange_rate_to_chf: parseFloat(document.getElementById("valuation-fx").value) || null,
+    current_value_chf: parseFloat(document.getElementById("valuation-chf").value),
+    source: document.getElementById("valuation-source").value,
+    note: document.getElementById("valuation-note").value,
+  };
+
+  await fetch(id ? `/api/networth/valuations/${id}` : "/api/networth/valuations", {
+    method: id ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  hideValuationForm();
+  loadDashboard();
+}
+
+function editValuation(id) {
+  const v = dashboardData.valuations.find(x => x.id === id);
+  showValuationForm();
+  document.getElementById("valuation-id").value = v.id;
+  document.getElementById("valuation-account").value = v.account_id || "";
+  document.getElementById("valuation-date").value = v.valuation_date || "";
+  document.getElementById("valuation-quantity").value = v.quantity ?? "";
+  document.getElementById("valuation-avg-purchase").value = v.avg_purchase_price ?? "";
+  document.getElementById("valuation-current-price").value = v.current_price ?? "";
+  document.getElementById("valuation-original-value").value = v.current_value_original ?? "";
+  document.getElementById("valuation-fx").value = v.exchange_rate_to_chf ?? "";
+  document.getElementById("valuation-chf").value = v.current_value_chf ?? "";
+  document.getElementById("valuation-source").value = v.source || "manual";
+  document.getElementById("valuation-note").value = v.note || "";
+}
+
+async function deleteValuation(id) {
+  await fetch(`/api/networth/valuations/${id}`, { method: "DELETE" });
+  loadDashboard();
+}
+
+async function saveSnapshot() {
+  const id = document.getElementById("snapshot-id").value;
+  const payload = {
+    snapshot_date: document.getElementById("snapshot-date").value,
+    total_liquid_chf: parseFloat(document.getElementById("snapshot-liquid").value),
+    total_illiquid_chf: parseFloat(document.getElementById("snapshot-illiquid").value),
+    total_networth_chf: parseFloat(document.getElementById("snapshot-total").value),
+    mom_change_chf: parseFloat(document.getElementById("snapshot-mom-chf").value) || null,
+    mom_change_pct: parseFloat(document.getElementById("snapshot-mom-pct").value) || null,
+    notes: document.getElementById("snapshot-notes").value,
+  };
+
+  await fetch(id ? `/api/networth/snapshots/${id}` : "/api/networth/snapshots", {
+    method: id ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  hideSnapshotForm();
+  loadDashboard();
+}
+
+function editSnapshot(id) {
+  const s = dashboardData.snapshots.find(x => x.id === id);
+  showSnapshotForm();
+  document.getElementById("snapshot-id").value = s.id;
+  document.getElementById("snapshot-date").value = s.snapshot_date || "";
+  document.getElementById("snapshot-liquid").value = s.total_liquid_chf ?? "";
+  document.getElementById("snapshot-illiquid").value = s.total_illiquid_chf ?? "";
+  document.getElementById("snapshot-total").value = s.total_networth_chf ?? "";
+  document.getElementById("snapshot-mom-chf").value = s.mom_change_chf ?? "";
+  document.getElementById("snapshot-mom-pct").value = s.mom_change_pct ?? "";
+  document.getElementById("snapshot-notes").value = s.notes || "";
+}
+
+async function deleteSnapshot(id) {
+  await fetch(`/api/networth/snapshots/${id}`, { method: "DELETE" });
+  loadDashboard();
+}
+
+async function computeSnapshot() {
+  const res = await fetch('/api/networth/compute-snapshot', { method: 'POST' });
+  if (!res.ok) { 
+    alert('Compute failed'); 
+    return; 
+  }
+  const data = await res.json();
+  
+  // Fill the snapshot form and open it
+  document.getElementById('snapshot-date').value = data.snapshot_date;
+  document.getElementById('snapshot-liquid').value = data.total_liquid_chf.toFixed(2);
+  document.getElementById('snapshot-illiquid').value = data.total_illiquid_chf.toFixed(2);
+  document.getElementById('snapshot-total').value = data.total_networth_chf.toFixed(2);
+  
+  showSnapshotForm();
+}
+
+loadDashboard();
+</script>
+{% endblock %}

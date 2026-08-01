@@ -2,3 +2,5 @@ __pycache__/
 
 .env
 files/
+storage/uploads/
+legacy_db/

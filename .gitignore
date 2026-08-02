@@ -4,3 +4,6 @@ __pycache__/
 files/
 storage/uploads/
 legacy_db/
+node_modules/
+package-lock.json
+package.json

@@ -58,9 +58,3 @@ async def pending_users(admin: dict = Depends(require_admin)):
         rows = conn.execute(text("SELECT id, email, created_at FROM users WHERE is_approved = FALSE")).mappings().all()
     return [dict(r) for r in rows]
 
-@router.post("/admin/approve-user/{user_id}")
-async def approve_user(user_id: int, admin: dict = Depends(require_admin)):
-    with engine.connect() as conn:
-        conn.execute(text("UPDATE users SET is_approved = TRUE WHERE id = :id"), {"id": user_id})
-        conn.commit()
-    return {"status": "approved", "user_id": user_id}

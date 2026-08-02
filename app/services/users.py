@@ -39,3 +39,4 @@ def authenticate_user(email: str, password: str) -> dict | None:
     if not verify_password(password, user["password_hash"]):
         return None
     return user
+

@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 import os
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -33,8 +33,15 @@ app.include_router(rules.router)
 app.include_router(networth.router)
 
 @app.get("/")
-async def dashboard(request: Request, user: dict = Depends(get_current_user)):
-    return templates.TemplateResponse(request, "dashboard.html", {"active_page": "dashboard", "user": user})
+async def dashboard(request: Request):
+    # Try to get the user, but don't crash if they aren't logged in
+    try:
+        user = await get_current_user(request)
+        # If we get a user, render the dashboard
+        return templates.TemplateResponse(request, "dashboard.html", {"active_page": "dashboard", "user": user})
+    except HTTPException:
+        # If not authenticated, redirect to login
+        return RedirectResponse(url="/login")
 
 @app.get("/upload")
 async def upload_page(request: Request, user: dict = Depends(get_current_user)):

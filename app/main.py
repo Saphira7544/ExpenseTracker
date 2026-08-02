@@ -28,7 +28,7 @@ app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(auth.router)
 app.include_router(uploads.router)
-app.include_router(transactions.router)
+app.include_router(transactions.router) 
 app.include_router(rules.router)
 app.include_router(networth.router)
 

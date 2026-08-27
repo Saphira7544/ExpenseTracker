@@ -19,6 +19,7 @@
       {{ user.email if user else "" }}
     </div>
     <a href="/" class="{{ 'active' if active_page == 'dashboard' }}">Dashboard</a>
+    <a href="/analytics" class="{{ 'active' if active_page == 'analytics' }}">Analytics</a>
     <a href="/upload" class="{{ 'active' if active_page == 'upload' }}">Upload Files</a>
     <a href="/transactions" class="{{ 'active' if active_page == 'transactions' }}">Transactions</a>
     <a href="/rules" class="{{ 'active' if active_page == 'rules' }}">Rules</a>

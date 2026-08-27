@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from legacy_db.db import create_db, create_splits_table, create_rules_table, create_users_and_ownership
 from legacy_db.networth_db import create_networth_tables
 
-from app.api.routes import uploads, transactions, rules, auth, networth
+from app.api.routes import uploads, transactions, rules, auth, networth, analytics
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 
@@ -31,17 +31,13 @@ app.include_router(uploads.router)
 app.include_router(transactions.router) 
 app.include_router(rules.router)
 app.include_router(networth.router)
+app.include_router(analytics.router)
+
 
 @app.get("/")
-async def dashboard(request: Request):
-    # Try to get the user, but don't crash if they aren't logged in
-    try:
-        user = await get_current_user(request)
-        # If we get a user, render the dashboard
-        return templates.TemplateResponse(request, "dashboard.html", {"active_page": "dashboard", "user": user})
-    except HTTPException:
-        # If not authenticated, redirect to login
-        return RedirectResponse(url="/login")
+async def dashboard(request: Request, user: dict = Depends(get_current_user)):
+    return templates.TemplateResponse(request, "dashboard.html", {"active_page": "dashboard", "user": user})
+
 
 @app.get("/upload")
 async def upload_page(request: Request, user: dict = Depends(get_current_user)):
@@ -78,4 +74,12 @@ async def networth_config_page(request: Request, user: dict = Depends(get_curren
         request,
         "networth_config.html",
         {"active_page": "networth", "user": user}
+    )
+
+@app.get("/analytics")
+async def analytics_page(request: Request, user: dict = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        request,
+        "analytics.html",
+        {"active_page": "analytics", "user": user}
     )

@@ -47,6 +47,7 @@
     <input id="valuation-current-price" type="number" step="any" placeholder="Current Price" />
     <input id="valuation-original-value" type="number" step="any" placeholder="Current Value Original" />
     <input id="valuation-fx" type="number" step="any" placeholder="FX to CHF" />
+    <input id="valuation-realized-pnl" type="number" step="any" placeholder="Realized P&L">
     <input id="valuation-chf" type="number" step="any" placeholder="Current Value CHF" />
     <input id="valuation-source" placeholder="Source" value="manual" />
     <input id="valuation-note" placeholder="Note" />
@@ -105,9 +106,13 @@
           <th>Account</th>
           <th>Date</th>
           <th>Quantity</th>
-          <th>Value (orig)</th>
+          <th>Value orig</th>
+          <th>Cost Basis</th>
+          <th>Unrealized P&L</th>
+          <th>Total Return</th>
+          <th>Realized P&L</th>
           <th>FX to CHF</th>
-          <th>Value (CHF)</th>
+          <th>Value CHF</th>
           <th>Liquidity</th>
           <th>Actions</th>
         </tr>  
@@ -225,6 +230,18 @@ async function loadDashboard() {
       <td>${v.valuation_date}</td>
       <td class="numeric">${v.quantity == null ? "" : Number(v.quantity).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
       <td class="numeric">${v.current_value_original == null ? "" : `${v.currency || ""} ${Number(v.current_value_original).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`}</td>
+      ${(() => {
+          const costBasis = (v.quantity != null && v.avg_purchase_price != null) ? v.quantity * v.avg_purchase_price : null;
+          const unrealized = (costBasis != null && v.current_value_original != null) ? v.current_value_original - costBasis : null;
+          const returnPct = (costBasis && unrealized != null) ? (unrealized / costBasis) * 100 : null;
+          const cls = unrealized == null ? '' : (unrealized >= 0 ? 'amount-positive' : 'amount-negative');
+          return `
+              <td class="numeric">${costBasis != null ? costBasis.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
+              <td class="numeric ${cls}">${unrealized != null ? unrealized.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
+              <td class="numeric ${cls}">${returnPct != null ? returnPct.toFixed(1) + '%' : '—'}</td>
+              <td class="numeric">${v.realized_pnl != null ? Number(v.realized_pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '0.00'}</td>
+          `;
+      })()}
       <td class="numeric">${v.exchange_rate_to_chf == null ? "" : Number(v.exchange_rate_to_chf).toFixed(4)}</td>
       <td class="numeric strong">CHF ${Number(v.current_value_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
       <td>${v.liquidity_status || ""}</td>
@@ -290,6 +307,7 @@ function clearValuationForm() {
   document.getElementById("valuation-original-value").value = "";
   document.getElementById("valuation-fx").value = "";
   document.getElementById("valuation-chf").value = "";
+  document.getElementById('valuation-realized-pnl').value = 0;
   document.getElementById("valuation-source").value = "manual";
   document.getElementById("valuation-note").value = "";
 }
@@ -358,6 +376,7 @@ async function saveValuation() {
     current_value_original: parseFloat(document.getElementById("valuation-original-value").value) || null,
     exchange_rate_to_chf: parseFloat(document.getElementById("valuation-fx").value) || null,
     current_value_chf: parseFloat(document.getElementById("valuation-chf").value),
+    realized_pnl: parseFloat(document.getElementById('valuation-realized-pnl').value) || 0,
     source: document.getElementById("valuation-source").value,
     note: document.getElementById("valuation-note").value,
   };
@@ -384,6 +403,7 @@ function editValuation(id) {
   document.getElementById("valuation-original-value").value = v.current_value_original ?? "";
   document.getElementById("valuation-fx").value = v.exchange_rate_to_chf ?? "";
   document.getElementById("valuation-chf").value = v.current_value_chf ?? "";
+  document.getElementById("valuation-realized-pnl").value = v.realized_pnl ?? 0;
   document.getElementById("valuation-source").value = v.source || "manual";
   document.getElementById("valuation-note").value = v.note || "";
 }
@@ -454,7 +474,7 @@ loadDashboard();
 </script>
 
 <div class="modal-overlay" id="quickUpdateModal">
-    <div class="modal-box">
+    <div class="modal-box" style="width: 460px;">
         <h2 style="font-size: 16px; margin-bottom: 4px;">
             Update value — <span id="quickUpdateAccountName"></span>
         </h2>
@@ -465,8 +485,39 @@ loadDashboard();
         <label style="font-size: 12px; color: #6b7280;">Date</label>
         <input type="date" id="quickUpdateDate" style="margin-bottom: 10px;">
 
-        <label style="font-size: 12px; color: #6b7280;">New value (CHF)</label>
+        <p style="font-size: 12px; color: #6b7280; margin: 12px 0 4px;">
+            For stocks/ETFs — leave blank for simple lump-sum accounts
+        </p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+            <div>
+                <label style="font-size: 12px; color: #6b7280;">Quantity (shares)</label>
+                <input type="number" step="any" id="quickUpdateQuantity" placeholder="e.g. 26.75" oninput="onQuantityOrPriceChange()">
+            </div>
+            <div>
+                <label style="font-size: 12px; color: #6b7280;">Current price / unit</label>
+                <input type="number" step="any" id="quickUpdatePrice" placeholder="e.g. 823.30" oninput="onQuantityOrPriceChange()">
+            </div>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="font-size: 12px; color: #6b7280;">Avg. purchase price / unit (cost basis)</label>
+            <input type="number" step="any" id="quickUpdateAvgPrice" placeholder="e.g. 735.83" oninput="onAvgPriceChange()">
+        </div>
+
+        <label style="font-size: 12px; color: #6b7280;">
+            Value in original currency (<span id="quickUpdateCurrencyLabel"></span>) — Market Value
+        </label>
+        <input type="number" step="any" id="quickUpdateOriginalValue" placeholder="0.00" style="margin-bottom: 6px;" oninput="onOriginalValueChange()">
+
+        <p id="quickUpdatePerformanceSummary" class="small-muted" style="margin-bottom: 10px; min-height: 16px;"></p>
+
+        <label style="font-size: 12px; color: #6b7280;">Exchange rate to CHF</label>
+        <input type="number" step="any" id="quickUpdateFx" placeholder="1.00" style="margin-bottom: 10px;" oninput="onFxChange()">
+
+        <label style="font-size: 12px; color: #6b7280; font-weight: 700;">Value in CHF</label>
         <input type="number" step="any" id="quickUpdateValue" placeholder="0.00" style="margin-bottom: 10px;">
+
+        <label style="font-size: 12px; color: #6b7280;">Realized P&amp;L to date (optional)</label>
+        <input type="number" step="any" id="quickUpdateRealizedPnl" placeholder="0.00" style="margin-bottom: 10px;">
 
         <label style="font-size: 12px; color: #6b7280;">Note (optional)</label>
         <input type="text" id="quickUpdateNote" placeholder="e.g. quarterly statement" style="margin-bottom: 10px;">

@@ -113,5 +113,10 @@ def create_networth_tables():
         )
         """))
 
+        conn.execute(text("""
+            ALTER TABLE networth_valuations
+            ADD COLUMN IF NOT EXISTS realized_pnl FLOAT DEFAULT 0
+        """))
+
         conn.commit()
         print("✅ Net worth tables ready")

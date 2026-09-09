@@ -37,7 +37,7 @@ function renderSummaryCards(summary) {
         <div class="summary-card">
             <div class="label">Biggest Expense</div>
             <div class="value">${fmtMoney(summary.biggest_expense_amount)}</div>
-            <div class="sub-value">${summary.biggest_expense_description || '—'}</div>
+            <div class="sub-value" title="${summary.biggest_expense_description || ''}">${summary.biggest_expense_description || '—'}</div>
         </div>
     `;
 }

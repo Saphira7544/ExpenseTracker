@@ -96,6 +96,24 @@ def get_overview_trend(user_id: int, year: str | None) -> list[dict]:
         })
     return result
 
+def get_overview_summary(user_id: int, year: str | None) -> dict:
+    """
+    Aggregate totals for the selected year (or all-time) — the same
+    underlying numbers as the trend chart, just summed into one figure
+    each, for the Dashboard summary cards.
+    """
+    trend = get_overview_trend(user_id, year)
+    income = sum(r["income"] for r in trend)
+    expenses = sum(r["expenses"] for r in trend)
+    invested = sum(r["invested"] for r in trend)
+    net = income + expenses
+    return {
+        "income": income,
+        "expenses": expenses,
+        "invested": invested,
+        "net": net,
+        "savings_rate": (net / income * 100) if income > 0 else 0,
+    }
 
 def get_overview_savings_rate(user_id: int, year: str | None) -> list[dict]:
     trend = get_overview_trend(user_id, year)
@@ -201,6 +219,7 @@ def get_overview_bundle(user_id: int, year: str | None = None) -> dict:
     return {
         "available_years": available_years,
         "selected_year": selected_year,
+        "summary": get_overview_summary(user_id, selected_year),
         "income_expenses_trend": get_overview_trend(user_id, selected_year),
         "savings_rate_trend": get_overview_savings_rate(user_id, selected_year),
         "spending_by_category_trend": get_overview_category_trend(user_id, selected_year, 6),

@@ -1,3 +1,34 @@
+function renderOverviewSummaryCards(summary) {
+    const el = document.getElementById('overview-summary-cards');
+    if (!summary) {
+        el.innerHTML = '<div class="summary-card"><div class="label">No data</div><div class="value">—</div></div>';
+        return;
+    }
+    el.innerHTML = `
+        <div class="summary-card income">
+            <div class="label">Income</div>
+            <div class="value">${fmtMoney(summary.income)}</div>
+        </div>
+        <div class="summary-card expenses">
+            <div class="label">Expenses</div>
+            <div class="value">${fmtMoney(Math.abs(summary.expenses))}</div>
+            <div class="sub-value">Excludes investments</div>
+        </div>
+        <div class="summary-card invested">
+            <div class="label">Invested</div>
+            <div class="value">${fmtMoney(summary.invested)}</div>
+        </div>
+        <div class="summary-card net">
+            <div class="label">Net Saved</div>
+            <div class="value">${fmtMoney(summary.net)}</div>
+        </div>
+        <div class="summary-card rate">
+            <div class="label">Savings Rate</div>
+            <div class="value">${summary.savings_rate.toFixed(1)}%</div>
+        </div>
+    `;
+}
+
 function renderOverviewIncomeExpensesChart(trend) {
     destroyChart('overviewIncomeExpenses');
     const ctx = document.getElementById('overviewIncomeExpensesChart');
@@ -107,6 +138,7 @@ async function loadOverview(year) {
     const data = await res.json();
 
     populateYearSelect(data.available_years, data.selected_year);
+    renderOverviewSummaryCards(data.summary);
     renderOverviewIncomeExpensesChart(data.income_expenses_trend);
     renderOverviewSavingsRateChart(data.savings_rate_trend);
     renderOverviewCategoryTrendChart(data.spending_by_category_trend);

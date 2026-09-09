@@ -176,6 +176,7 @@ def list_valuations(user_id: int) -> list[dict]:
                 v.current_value_original,
                 v.exchange_rate_to_chf,
                 v.current_value_chf,
+                v.realized_pnl,
                 v.source,
                 v.note
             FROM networth_valuations v
@@ -193,12 +194,12 @@ def create_valuation(user_id: int, payload: dict) -> int:
             INSERT INTO networth_valuations (
                 user_id, account_id, valuation_date, quantity, avg_purchase_price,
                 current_price, current_value_original, exchange_rate_to_chf,
-                current_value_chf, source, note
+                current_value_chf, realized_pnl, source, note
             )
             VALUES (
                 :user_id, :account_id, :valuation_date, :quantity, :avg_purchase_price,
                 :current_price, :current_value_original, :exchange_rate_to_chf,
-                :current_value_chf, :source, :note
+                :current_value_chf, :realized_pnl, :source, :note
             )
             RETURNING id
         """), {
@@ -211,6 +212,7 @@ def create_valuation(user_id: int, payload: dict) -> int:
             "current_value_original": payload.get("current_value_original"),
             "exchange_rate_to_chf": payload.get("exchange_rate_to_chf"),
             "current_value_chf": payload["current_value_chf"],
+            "realized_pnl": payload.get("realized_pnl", 0),
             "source": (payload.get("source") or "manual").strip(),
             "note": (payload.get("note") or "").strip() or None,
         })
@@ -230,6 +232,7 @@ def update_valuation(user_id: int, valuation_id: int, payload: dict) -> bool:
                 current_value_original = :current_value_original,
                 exchange_rate_to_chf = :exchange_rate_to_chf,
                 current_value_chf = :current_value_chf,
+                realized_pnl = :realized_pnl
                 source = :source,
                 note = :note
             WHERE id = :id AND user_id = :user_id
@@ -244,6 +247,7 @@ def update_valuation(user_id: int, valuation_id: int, payload: dict) -> bool:
             "current_value_original": payload.get("current_value_original"),
             "exchange_rate_to_chf": payload.get("exchange_rate_to_chf"),
             "current_value_chf": payload["current_value_chf"],
+            "realized_pnl": payload.get("realized_pnl", 0),
             "source": (payload.get("source") or "manual").strip(),
             "note": (payload.get("note") or "").strip() or None,
         })

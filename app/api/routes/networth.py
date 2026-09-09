@@ -51,6 +51,7 @@ class ValuationPayload(BaseModel):
     current_value_original: Optional[float] = None
     exchange_rate_to_chf: Optional[float] = None
     current_value_chf: float
+    realized_pnl: Optional[float] = 0
     source: Optional[str] = "manual"
     note: Optional[str] = None
 

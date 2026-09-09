@@ -1,24 +1,7 @@
 from openai import OpenAI
+from app.core.categories import CATEGORIES
 
 client = OpenAI()
-
-CATEGORIES = [
-    "Salary",
-    "Investments",
-    "Groceries",
-    "Restaurants/Bars",
-    "Transport",
-    "Housing",
-    "Rents",
-    "Health",
-    "Subscriptions",
-    "Transfers",
-    "Shopping",
-    "Entertainment",
-    "Education/Work",
-    "Travel",
-    "Other"
-]
 
 def classify_transactions_batch(descriptions, batch_size=40):
     """

@@ -88,6 +88,7 @@
         <th>Liquidity</th>
         <th>Ticker</th>
         <th>Active</th>
+        <th>Current Value</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -198,9 +199,13 @@ async function loadDashboard() {
       <td>${a.liquidity_status || ""}</td>
       <td>${a.ticker_symbol || ""}</td>
       <td>${a.is_active ? "Yes" : "No"}</td>
+      <td data-current-value-for="${a.id}"></td>
       <td class="actions">
+        <button class="icon-btn" title="Update Value" onclick="openQuickUpdateModal(${a.id})">
+            <i class="fa-solid fa-arrow-trend-up"></i>
+        </button>
         <button class="icon-btn" title="Edit" onclick="editAccount(${a.id})">
-          <i class="fa-regular fa-pen-to-square"></i>
+          <i class="fa-solid fa-pen-to-square"></i>
         </button>
         <button class="icon-btn danger" title="Delete" onclick="deleteAccount(${a.id})">
           <i class="fa-solid fa-trash"></i>
@@ -208,6 +213,8 @@ async function loadDashboard() {
       </td>
     </tr>
   `).join("");
+
+  renderAccountCurrentValues();
 
   const valuationsBody = document.getElementById("valuationsBody");
   valuationsBody.innerHTML = dashboardData.valuations.map(v => `
@@ -443,4 +450,32 @@ async function computeSnapshot() {
 
 loadDashboard();
 </script>
+
+<div class="modal-overlay" id="quickUpdateModal">
+    <div class="modal-box">
+        <h2 style="font-size: 16px; margin-bottom: 4px;">
+            Update value — <span id="quickUpdateAccountName"></span>
+        </h2>
+        <p id="quickUpdateHint" class="small-muted" style="margin-bottom: 12px;"></p>
+
+        <input type="hidden" id="quickUpdateAccountId">
+
+        <label style="font-size: 12px; color: #6b7280;">Date</label>
+        <input type="date" id="quickUpdateDate" style="margin-bottom: 10px;">
+
+        <label style="font-size: 12px; color: #6b7280;">New value (CHF)</label>
+        <input type="number" step="any" id="quickUpdateValue" placeholder="0.00" style="margin-bottom: 10px;">
+
+        <label style="font-size: 12px; color: #6b7280;">Note (optional)</label>
+        <input type="text" id="quickUpdateNote" placeholder="e.g. quarterly statement" style="margin-bottom: 10px;">
+
+        <p id="quickUpdateError" style="color: #dc2626; font-size: 13px; margin-bottom: 8px;"></p>
+
+        <div style="display: flex; gap: 8px;">
+            <button class="primary" onclick="saveQuickUpdate()">Save new value</button>
+            <button class="secondary" onclick="closeQuickUpdateModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

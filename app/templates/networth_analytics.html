@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>Net Worth Analytics</h1>
+
+<div class="charts-grid">
+    <div class="card chart-card">
+        <h2><i class="fa-solid fa-chart-line"></i> Net Worth Trend</h2>
+        <canvas id="netWorthTrendChart"></canvas>
+    </div>
+
+    <div class="card chart-card">
+        <h2><i class="fa-solid fa-arrow-trend-up"></i> Investment Value Over Time</h2>
+        <canvas id="investmentTrendChart"></canvas>
+    </div>
+
+    <div class="card chart-card">
+        <h2><i class="fa-solid fa-chart-pie"></i> Asset Allocation</h2>
+        <canvas id="assetAllocationChart"></canvas>
+    </div>
+
+    <div class="card chart-card">
+        <h2><i class="fa-solid fa-droplet"></i> Liquid vs Illiquid</h2>
+        <canvas id="liquiditySplitChart"></canvas>
+    </div>
+</div>
+
+<link rel="stylesheet" href="/static/networth_analytics.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/static/charts-common.js"></script>
+<script src="/static/networth-charts.js"></script>
+<script src="/static/networth-quick-update.js"></script>
+{% endblock %}

@@ -1,9 +1,14 @@
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 from app.db.session import engine
 
+EXCLUDED_FROM_EXPENSES = ["Investments"]
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
 
 def get_available_months(user_id: int) -> list[str]:
-    """Distinct 'YYYY-MM' months that have transactions, most recent first."""
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT DISTINCT to_char(date, 'YYYY-MM') AS ym
@@ -14,74 +19,93 @@ def get_available_months(user_id: int) -> list[str]:
     return [r[0] for r in rows]
 
 
-def get_month_summary(user_id: int, month: str) -> dict:
-    """
-    month: 'YYYY-MM'. Returns income, expenses, net, and count for that month.
-    Excludes internal transfers/investments from "expenses" bucket where possible,
-    but still reports them separately.
-    """
-    with engine.connect() as conn:
-        row = conn.execute(text("""
-            SELECT
-                COALESCE(SUM(amount) FILTER (WHERE amount > 0), 0) AS income,
-                COALESCE(SUM(amount) FILTER (WHERE amount < 0), 0) AS expenses,
-                COALESCE(SUM(amount), 0) AS net,
-                COUNT(*) AS txn_count
-            FROM transactions
-            WHERE user_id = :user_id
-              AND to_char(date, 'YYYY-MM') = :month
-        """), {"user_id": user_id, "month": month}).mappings().first()
-    return dict(row) if row else {"income": 0, "expenses": 0, "net": 0, "txn_count": 0}
-
-
-def get_category_breakdown(user_id: int, month: str) -> list[dict]:
-    """Expense total per category for a given month (expenses = negative amounts)."""
+def get_available_years(user_id: int) -> list[str]:
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT
-                COALESCE(category, 'Uncategorized') AS category,
-                SUM(ABS(amount)) AS total
+            SELECT DISTINCT to_char(date, 'YYYY') AS yr
             FROM transactions
             WHERE user_id = :user_id
-              AND to_char(date, 'YYYY-MM') = :month
-              AND amount < 0
-            GROUP BY COALESCE(category, 'Uncategorized')
-            ORDER BY total DESC
-        """), {"user_id": user_id, "month": month}).mappings().all()
-    return [dict(r) for r in rows]
+            ORDER BY yr DESC
+        """), {"user_id": user_id}).all()
+    return [r[0] for r in rows]
 
+# ---------------------------------------------------------------------------
+# DASHBOARD (annual / all-time) — used by "/"
+# ---------------------------------------------------------------------------
 
-def get_income_vs_expenses_trend(user_id: int, months_back: int = 12) -> list[dict]:
-    """Monthly income vs expenses vs net (savings) for the last N months."""
+def get_overview_trend(user_id: int, year: str | None) -> list[dict]:
+    """
+    Income vs TRUE expenses (excluding Investments) vs invested vs net.
+    - year == None or 'all'  -> one point PER YEAR
+    - year == 'YYYY'         -> one point PER MONTH within that year
+    """
+    query_all = text("""
+        SELECT
+            to_char(date, 'YYYY') AS period,
+            COALESCE(SUM(amount) FILTER (WHERE amount > 0), 0) AS income,
+            COALESCE(SUM(amount) FILTER (
+                WHERE amount < 0 AND COALESCE(category, '') NOT IN :excluded
+            ), 0) AS expenses,
+            COALESCE(SUM(ABS(amount)) FILTER (
+                WHERE amount < 0 AND category IN :excluded
+            ), 0) AS invested
+        FROM transactions
+        WHERE user_id = :user_id
+        GROUP BY to_char(date, 'YYYY')
+        ORDER BY period ASC
+    """).bindparams(bindparam("excluded", expanding=True))
+
+    query_year = text("""
+        SELECT
+            to_char(date, 'YYYY-MM') AS period,
+            COALESCE(SUM(amount) FILTER (WHERE amount > 0), 0) AS income,
+            COALESCE(SUM(amount) FILTER (
+                WHERE amount < 0 AND COALESCE(category, '') NOT IN :excluded
+            ), 0) AS expenses,
+            COALESCE(SUM(ABS(amount)) FILTER (
+                WHERE amount < 0 AND category IN :excluded
+            ), 0) AS invested
+        FROM transactions
+        WHERE user_id = :user_id
+          AND to_char(date, 'YYYY') = :year
+        GROUP BY to_char(date, 'YYYY-MM')
+        ORDER BY period ASC
+    """).bindparams(bindparam("excluded", expanding=True))
+
     with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT
-                to_char(date, 'YYYY-MM') AS month,
-                COALESCE(SUM(amount) FILTER (WHERE amount > 0), 0) AS income,
-                COALESCE(SUM(amount) FILTER (WHERE amount < 0), 0) AS expenses,
-                COALESCE(SUM(amount), 0) AS net
-            FROM transactions
-            WHERE user_id = :user_id
-              AND date >= (CURRENT_DATE - (:months_back || ' months')::interval)
-            GROUP BY to_char(date, 'YYYY-MM')
-            ORDER BY month ASC
-        """), {"user_id": user_id, "months_back": months_back}).mappings().all()
-    return [dict(r) for r in rows]
+        if not year or year == "all":
+            rows = conn.execute(query_all, {
+                "user_id": user_id, "excluded": EXCLUDED_FROM_EXPENSES
+            }).mappings().all()
+        else:
+            rows = conn.execute(query_year, {
+                "user_id": user_id, "year": year, "excluded": EXCLUDED_FROM_EXPENSES
+            }).mappings().all()
+
+    result = []
+    for r in rows:
+        income = float(r["income"] or 0)
+        expenses = float(r["expenses"] or 0)
+        invested = float(r["invested"] or 0)
+        result.append({
+            "period": r["period"],
+            "income": income,
+            "expenses": expenses,
+            "invested": invested,
+            "net": income + expenses,  # expenses already negative; investments excluded
+        })
+    return result
 
 
-def get_savings_rate_trend(user_id: int, months_back: int = 12) -> list[dict]:
-    """
-    Savings rate = net / income * 100 for each month.
-    Skips months with zero income to avoid divide-by-zero.
-    """
-    trend = get_income_vs_expenses_trend(user_id, months_back)
+def get_overview_savings_rate(user_id: int, year: str | None) -> list[dict]:
+    trend = get_overview_trend(user_id, year)
     result = []
     for row in trend:
-        income = float(row["income"] or 0)
-        net = float(row["net"] or 0)
+        income = row["income"]
+        net = row["net"]
         rate = (net / income * 100) if income > 0 else 0
         result.append({
-            "month": row["month"],
+            "period": row["period"],
             "savings_rate": round(rate, 1),
             "net": net,
             "income": income,
@@ -89,53 +113,248 @@ def get_savings_rate_trend(user_id: int, months_back: int = 12) -> list[dict]:
     return result
 
 
-def get_spending_by_category_trend(user_id: int, months_back: int = 6, top_n: int = 6) -> dict:
+def get_overview_category_trend(user_id: int, year: str | None, top_n: int = 6) -> dict:
     """
-    Stacked-area friendly structure: totals per category per month,
-    limited to the top_n categories by overall spend (rest bucketed as 'Other').
+    Spending per category per period. Investments (and anything else in
+    EXCLUDED_FROM_EXPENSES) are left out entirely — this chart is about
+    actual spending, not money moved into investments.
     """
+    top_query_all = text("""
+        SELECT COALESCE(category, 'Uncategorized') AS category, SUM(ABS(amount)) AS total
+        FROM transactions
+        WHERE user_id = :user_id AND amount < 0
+          AND COALESCE(category, '') NOT IN :excluded
+        GROUP BY COALESCE(category, 'Uncategorized')
+        ORDER BY total DESC
+        LIMIT :top_n
+    """).bindparams(bindparam("excluded", expanding=True))
+
+    trend_query_all = text("""
+        SELECT
+            to_char(date, 'YYYY') AS period,
+            COALESCE(category, 'Uncategorized') AS category,
+            SUM(ABS(amount)) AS total
+        FROM transactions
+        WHERE user_id = :user_id AND amount < 0
+          AND COALESCE(category, '') NOT IN :excluded
+        GROUP BY to_char(date, 'YYYY'), COALESCE(category, 'Uncategorized')
+        ORDER BY period ASC
+    """).bindparams(bindparam("excluded", expanding=True))
+
+    top_query_year = text("""
+        SELECT COALESCE(category, 'Uncategorized') AS category, SUM(ABS(amount)) AS total
+        FROM transactions
+        WHERE user_id = :user_id AND amount < 0 AND to_char(date, 'YYYY') = :year
+          AND COALESCE(category, '') NOT IN :excluded
+        GROUP BY COALESCE(category, 'Uncategorized')
+        ORDER BY total DESC
+        LIMIT :top_n
+    """).bindparams(bindparam("excluded", expanding=True))
+
+    trend_query_year = text("""
+        SELECT
+            to_char(date, 'YYYY-MM') AS period,
+            COALESCE(category, 'Uncategorized') AS category,
+            SUM(ABS(amount)) AS total
+        FROM transactions
+        WHERE user_id = :user_id AND amount < 0 AND to_char(date, 'YYYY') = :year
+          AND COALESCE(category, '') NOT IN :excluded
+        GROUP BY to_char(date, 'YYYY-MM'), COALESCE(category, 'Uncategorized')
+        ORDER BY period ASC
+    """).bindparams(bindparam("excluded", expanding=True))
+
     with engine.connect() as conn:
-        top_rows = conn.execute(text("""
-            SELECT COALESCE(category, 'Uncategorized') AS category, SUM(ABS(amount)) AS total
-            FROM transactions
-            WHERE user_id = :user_id
-              AND amount < 0
-              AND date >= (CURRENT_DATE - (:months_back || ' months')::interval)
-            GROUP BY COALESCE(category, 'Uncategorized')
-            ORDER BY total DESC
-            LIMIT :top_n
-        """), {"user_id": user_id, "months_back": months_back, "top_n": top_n}).all()
-        top_categories = [r[0] for r in top_rows]
+        if not year or year == "all":
+            top_rows = conn.execute(top_query_all, {
+                "user_id": user_id, "excluded": EXCLUDED_FROM_EXPENSES, "top_n": top_n
+            }).all()
+            rows = conn.execute(trend_query_all, {
+                "user_id": user_id, "excluded": EXCLUDED_FROM_EXPENSES
+            }).mappings().all()
+        else:
+            top_rows = conn.execute(top_query_year, {
+                "user_id": user_id, "year": year, "excluded": EXCLUDED_FROM_EXPENSES, "top_n": top_n
+            }).all()
+            rows = conn.execute(trend_query_year, {
+                "user_id": user_id, "year": year, "excluded": EXCLUDED_FROM_EXPENSES
+            }).mappings().all()
 
-        rows = conn.execute(text("""
-            SELECT
-                to_char(date, 'YYYY-MM') AS month,
-                COALESCE(category, 'Uncategorized') AS category,
-                SUM(ABS(amount)) AS total
-            FROM transactions
-            WHERE user_id = :user_id
-              AND amount < 0
-              AND date >= (CURRENT_DATE - (:months_back || ' months')::interval)
-            GROUP BY to_char(date, 'YYYY-MM'), COALESCE(category, 'Uncategorized')
-            ORDER BY month ASC
-        """), {"user_id": user_id, "months_back": months_back}).mappings().all()
-
-    months = sorted({r["month"] for r in rows})
-    series = {cat: {m: 0.0 for m in months} for cat in top_categories}
-    series["Other"] = {m: 0.0 for m in months}
+    top_categories = [r[0] for r in top_rows]
+    periods = sorted({r["period"] for r in rows})
+    series = {cat: {p: 0.0 for p in periods} for cat in top_categories}
+    series["Other"] = {p: 0.0 for p in periods}
 
     for r in rows:
-        m, cat, total = r["month"], r["category"], float(r["total"] or 0)
+        p, cat, total = r["period"], r["category"], float(r["total"] or 0)
         if cat in series and cat != "Other":
-            series[cat][m] += total
+            series[cat][p] += total
         else:
-            series["Other"][m] += total
+            series["Other"][p] += total
 
-    return {"months": months, "series": series}
+    return {"periods": periods, "series": series}
 
+
+def get_overview_bundle(user_id: int, year: str | None = None) -> dict:
+    available_years = get_available_years(user_id)
+    selected_year = year or "all"
+
+    return {
+        "available_years": available_years,
+        "selected_year": selected_year,
+        "income_expenses_trend": get_overview_trend(user_id, selected_year),
+        "savings_rate_trend": get_overview_savings_rate(user_id, selected_year),
+        "spending_by_category_trend": get_overview_category_trend(user_id, selected_year, 6),
+    }
+
+
+# ---------------------------------------------------------------------------
+# MONTHLY — used by "/monthly"
+# ---------------------------------------------------------------------------
+
+def get_month_summary(user_id: int, month: str) -> dict:
+    summary_query = text("""
+        SELECT
+            COALESCE(SUM(amount) FILTER (WHERE amount > 0), 0) AS income,
+            COALESCE(SUM(amount) FILTER (
+                WHERE amount < 0 AND COALESCE(category, '') NOT IN :excluded
+            ), 0) AS expenses,
+            COALESCE(SUM(ABS(amount)) FILTER (
+                WHERE amount < 0 AND category IN :excluded
+            ), 0) AS invested,
+            COUNT(*) AS txn_count,
+            COUNT(*) FILTER (
+                WHERE amount < 0 AND COALESCE(category, '') NOT IN :excluded
+            ) AS expense_count
+        FROM transactions
+        WHERE user_id = :user_id
+          AND to_char(date, 'YYYY-MM') = :month
+    """).bindparams(bindparam("excluded", expanding=True))
+
+    biggest_query = text("""
+        SELECT description, ABS(amount) AS amount
+        FROM transactions
+        WHERE user_id = :user_id
+          AND to_char(date, 'YYYY-MM') = :month
+          AND amount < 0
+          AND COALESCE(category, '') NOT IN :excluded
+        ORDER BY ABS(amount) DESC
+        LIMIT 1
+    """).bindparams(bindparam("excluded", expanding=True))
+
+    with engine.connect() as conn:
+        row = conn.execute(summary_query, {
+            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES
+        }).mappings().first()
+
+        biggest = conn.execute(biggest_query, {
+            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES
+        }).mappings().first()
+
+    summary = dict(row) if row else {
+        "income": 0, "expenses": 0, "invested": 0, "net": 0,
+        "txn_count": 0, "expense_count": 0
+    }
+
+    income = float(summary["income"] or 0)
+    expenses = float(summary["expenses"] or 0)
+    summary["income"] = income
+    summary["expenses"] = expenses
+    summary["invested"] = float(summary["invested"] or 0)
+    summary["net"] = income + expenses  # investments excluded from this
+
+    expense_count = summary.get("expense_count") or 0
+    summary["avg_expense"] = abs(expenses) / expense_count if expense_count > 0 else 0
+    summary["savings_rate"] = (summary["net"] / income * 100) if income > 0 else 0
+    summary["biggest_expense_description"] = biggest["description"] if biggest else None
+    summary["biggest_expense_amount"] = float(biggest["amount"]) if biggest else 0
+
+    return summary
+
+
+def get_category_breakdown(user_id: int, month: str) -> list[dict]:
+    """
+    Expenses by category for the pie chart / table. Investments are
+    excluded entirely — they get their own "invested" figure instead of
+    a slice here.
+    """
+    query = text("""
+        SELECT
+            COALESCE(category, 'Uncategorized') AS category,
+            SUM(ABS(amount)) AS total
+        FROM transactions
+        WHERE user_id = :user_id
+          AND to_char(date, 'YYYY-MM') = :month
+          AND amount < 0
+          AND COALESCE(category, '') NOT IN :excluded
+        GROUP BY COALESCE(category, 'Uncategorized')
+        ORDER BY total DESC
+    """).bindparams(bindparam("excluded", expanding=True))
+
+    with engine.connect() as conn:
+        rows = conn.execute(query, {
+            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES
+        }).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def get_top_merchants(user_id: int, month: str, limit: int = 8) -> list[dict]:
+    query = text("""
+        SELECT description, SUM(ABS(amount)) AS total, COUNT(*) AS occurrences
+        FROM transactions
+        WHERE user_id = :user_id
+          AND to_char(date, 'YYYY-MM') = :month
+          AND amount < 0
+          AND COALESCE(category, '') NOT IN :excluded
+        GROUP BY description
+        ORDER BY total DESC
+        LIMIT :limit
+    """).bindparams(bindparam("excluded", expanding=True))
+
+    with engine.connect() as conn:
+        rows = conn.execute(query, {
+            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES, "limit": limit
+        }).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def get_daily_spend(user_id: int, month: str) -> list[dict]:
+    query = text("""
+        SELECT date, SUM(ABS(amount)) AS total
+        FROM transactions
+        WHERE user_id = :user_id
+          AND to_char(date, 'YYYY-MM') = :month
+          AND amount < 0
+          AND COALESCE(category, '') NOT IN :excluded
+        GROUP BY date
+        ORDER BY date ASC
+    """).bindparams(bindparam("excluded", expanding=True))
+
+    with engine.connect() as conn:
+        rows = conn.execute(query, {
+            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES
+        }).mappings().all()
+    return [{"date": r["date"].isoformat(), "total": float(r["total"] or 0)} for r in rows]
+
+
+def get_monthly_bundle(user_id: int, month: str | None = None) -> dict:
+    available_months = get_available_months(user_id)
+    selected_month = month or (available_months[0] if available_months else None)
+
+    return {
+        "available_months": available_months,
+        "selected_month": selected_month,
+        "month_summary": get_month_summary(user_id, selected_month) if selected_month else None,
+        "category_breakdown": get_category_breakdown(user_id, selected_month) if selected_month else [],
+        "top_merchants": get_top_merchants(user_id, selected_month) if selected_month else [],
+        "daily_spend": get_daily_spend(user_id, selected_month) if selected_month else [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# NET WORTH — used by "/networth/analytics" (unchanged from before)
+# ---------------------------------------------------------------------------
 
 def get_networth_trend(user_id: int) -> list[dict]:
-    """Historical net worth snapshots (liquid / illiquid / total) over time."""
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT
@@ -152,11 +371,6 @@ def get_networth_trend(user_id: int) -> list[dict]:
 
 
 def get_investment_trend(user_id: int) -> list[dict]:
-    """
-    Value over time of accounts classified as investment-like asset categories
-    (anything whose asset_category name contains 'invest' or 'stock' or 'etf' or 'fund' or 'crypto'),
-    based on valuation history.
-    """
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT
@@ -188,7 +402,6 @@ def get_investment_trend(user_id: int) -> list[dict]:
 
 
 def get_asset_allocation(user_id: int) -> list[dict]:
-    """Current allocation of net worth across asset categories (latest valuation per account)."""
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT
@@ -210,7 +423,6 @@ def get_asset_allocation(user_id: int) -> list[dict]:
 
 
 def get_liquidity_split(user_id: int) -> list[dict]:
-    """Current split between liquid and illiquid assets (latest valuation per account)."""
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT
@@ -231,36 +443,8 @@ def get_liquidity_split(user_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_top_merchants(user_id: int, month: str, limit: int = 8) -> list[dict]:
-    """Biggest spending descriptions for a given month (helps spot recurring big expenses)."""
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT description, SUM(ABS(amount)) AS total, COUNT(*) AS occurrences
-            FROM transactions
-            WHERE user_id = :user_id
-              AND to_char(date, 'YYYY-MM') = :month
-              AND amount < 0
-            GROUP BY description
-            ORDER BY total DESC
-            LIMIT :limit
-        """), {"user_id": user_id, "month": month, "limit": limit}).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def get_dashboard_bundle(user_id: int, month: str | None = None) -> dict:
-    """Single call that returns everything the /analytics page needs."""
-    available_months = get_available_months(user_id)
-    selected_month = month or (available_months[0] if available_months else None)
-
+def get_networth_analytics_bundle(user_id: int) -> dict:
     return {
-        "available_months": available_months,
-        "selected_month": selected_month,
-        "month_summary": get_month_summary(user_id, selected_month) if selected_month else None,
-        "category_breakdown": get_category_breakdown(user_id, selected_month) if selected_month else [],
-        "top_merchants": get_top_merchants(user_id, selected_month) if selected_month else [],
-        "income_expenses_trend": get_income_vs_expenses_trend(user_id, 12),
-        "savings_rate_trend": get_savings_rate_trend(user_id, 12),
-        "spending_by_category_trend": get_spending_by_category_trend(user_id, 6, 6),
         "networth_trend": get_networth_trend(user_id),
         "investment_trend": get_investment_trend(user_id),
         "asset_allocation": get_asset_allocation(user_id),

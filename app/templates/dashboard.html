@@ -1,7 +1,37 @@
 {% extends "base.html" %}
 {% block content %}
+
 <h1>Dashboard</h1>
+
 <div class="card">
-  <p>Welcome. Use the sidebar to upload bank statement files.</p>
+    <div class="filter-bar">
+        <label for="year-select">Viewing</label>
+        <select id="year-select">
+            <option value="all">All Time</option>
+        </select>
+    </div>
 </div>
+
+<div class="charts-grid">
+    <div class="card chart-card">
+        <h2><i class="fa-solid fa-scale-balanced"></i> Income vs Expenses</h2>
+        <canvas id="overviewIncomeExpensesChart"></canvas>
+    </div>
+
+    <div class="card chart-card">
+        <h2><i class="fa-solid fa-piggy-bank"></i> Savings Rate Trend</h2>
+        <canvas id="overviewSavingsRateChart"></canvas>
+    </div>
+
+    <div class="card chart-card" style="grid-column: 1 / -1;">
+        <h2><i class="fa-solid fa-layer-group"></i> Spending by Category Over Time</h2>
+        <canvas id="overviewCategoryTrendChart"></canvas>
+    </div>
+</div>
+
+<link rel="stylesheet" href="/static/dashboard.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/static/charts-common.js"></script>
+<script src="/static/dashboard.js"></script>
+
 {% endblock %}

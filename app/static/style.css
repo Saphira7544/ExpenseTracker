@@ -106,12 +106,13 @@ th { color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercas
 .amount-negative { color: #dc2626; font-weight: 600; }
 
 .badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: #9ca3af; /* neutral fallback so new categories always look fine */
 }
 
 .cat-Investments { background: #7c3aed; }
@@ -129,6 +130,7 @@ th { color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercas
 .cat-Travel { background: #3b82f6; }
 .cat-Salary { background: #22c55e; }
 .cat-Split { background: #a855f7; }
+.cat-Sports { background: #4ef8dc; }
 .cat-Other { background: #9ca3af; }
 
 .modal-overlay {

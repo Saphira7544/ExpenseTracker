@@ -116,8 +116,13 @@
 </div>
 
 <script>
-const CATEGORIES = ["Salary","Investments","Groceries","Restaurants/Bars","Transport","Housing","Rents","Health","Subscriptions","Transfers","Shopping","Entertainment","Education/Work","Travel","Other"];
 
+let CATEGORIES = [];
+
+async function loadCategories() {
+    const res = await fetch('/api/categories');
+    CATEGORIES = await res.json();
+}
 let currentSplitId = null;
 let currentSplitAmount = 0;
 let pageSize = 50;
@@ -401,8 +406,10 @@ document.getElementById("resetFilterBtn").onclick = () => {
   loadTransactions();
 };
 
-loadFilters();
-loadTransactions();
+loadCategories().then(() => {
+    loadFilters();
+    loadTransactions();
+});
 
 function updatePaginationUI() {
   const start = currentOffset + 1;

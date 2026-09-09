@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from legacy_db.db import create_db, create_splits_table, create_rules_table, create_users_and_ownership
 from legacy_db.networth_db import create_networth_tables
 
-from app.api.routes import uploads, transactions, rules, auth, networth, analytics
+from app.api.routes import uploads, transactions, rules, auth, networth, analytics, categories
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 
@@ -32,7 +32,7 @@ app.include_router(transactions.router)
 app.include_router(rules.router)
 app.include_router(networth.router)
 app.include_router(analytics.router)
-
+app.include_router(categories.router)
 
 @app.get("/")
 async def dashboard(request: Request, user: dict = Depends(get_current_user)):
@@ -76,10 +76,18 @@ async def networth_config_page(request: Request, user: dict = Depends(get_curren
         {"active_page": "networth", "user": user}
     )
 
-@app.get("/analytics")
-async def analytics_page(request: Request, user: dict = Depends(get_current_user)):
+@app.get("/networth/analytics")
+async def networth_analytics_page(request: Request, user: dict = Depends(get_current_user)):
     return templates.TemplateResponse(
         request,
-        "analytics.html",
-        {"active_page": "analytics", "user": user}
+        "networth_analytics.html",
+        {"active_page": "networth_charts", "user": user}
+    )
+
+@app.get("/monthly")
+async def monthly_page(request: Request, user: dict = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        request,
+        "monthly.html",
+        {"active_page": "monthly", "user": user}
     )

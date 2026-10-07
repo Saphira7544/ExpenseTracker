@@ -11,8 +11,8 @@ function renderSummaryCards(summary) {
         </div>
         <div class="summary-card expenses">
             <div class="label">Expenses</div>
-            <div class="value">${fmtMoney(Math.abs(summary.expenses))}</div>
-            <div class="sub-value">Excludes investments</div>
+            <div class="value">${fmtMoney(-summary.expenses)}</div>
+            <div class="sub-value">Net of refunds &amp; repayments</div>
         </div>
         <div class="summary-card invested">
             <div class="label">Invested</div>
@@ -37,12 +37,14 @@ function renderSummaryCards(summary) {
         <div class="summary-card">
             <div class="label">Biggest Expense</div>
             <div class="value">${fmtMoney(summary.biggest_expense_amount)}</div>
-            <div class="sub-value" title="${summary.biggest_expense_description || ''}">${summary.biggest_expense_description || '—'}</div>
+            <div class="sub-value" title="${esc(summary.biggest_expense_description)}">${esc(summary.biggest_expense_description || '—')}</div>
         </div>
     `;
 }
 
 function renderCategoryPieChart(breakdown) {
+    // A category can be net negative (more paid back than spent); a pie can't show that.
+    breakdown = breakdown.filter(r => r.total > 0);
     destroyChart('categoryPie');
     const ctx = document.getElementById('categoryPieChart');
     registerChart('categoryPie', new Chart(ctx, {
@@ -69,7 +71,7 @@ function renderCategoryTable(breakdown) {
     tbody.innerHTML = breakdown.map((r, i) => `
         <tr>
             <td><span class="category-swatch" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span></td>
-            <td>${r.category}</td>
+            <td>${esc(r.category)}</td>
             <td class="numeric">${fmtMoney(r.total)}</td>
         </tr>
     `).join('') || '<tr><td colspan="3">No expenses for this month</td></tr>';
@@ -102,7 +104,7 @@ function renderTopMerchants(rows) {
     const tbody = document.querySelector('#top-merchants-table tbody');
     tbody.innerHTML = rows.map(r => `
         <tr>
-            <td>${r.description ?? '—'}</td>
+            <td>${esc(r.description ?? '—')}</td>
             <td>${r.occurrences}</td>
             <td class="numeric">${fmtMoney(r.total)}</td>
         </tr>
@@ -127,6 +129,8 @@ async function loadMonthly(month) {
     }
     const data = await res.json();
 
+    setupCurrencySelect(data, () => loadMonthly(document.getElementById('month-select').value));
+    renderFxNotice(data);
     populateMonthSelect(data.available_months, data.selected_month);
     renderSummaryCards(data.month_summary);
     renderCategoryPieChart(data.category_breakdown);

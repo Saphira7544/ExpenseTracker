@@ -198,13 +198,13 @@ async function loadDashboard() {
   const accountsBody = document.getElementById("accountsBody");
   accountsBody.innerHTML = dashboardData.accounts.map(a => `
     <tr>
-      <td>${a.account_name}</td>
-      <td>${a.institution || ""}</td>
-      <td>${a.asset_category || ""}</td>
-      <td>${a.account_type || ""}</td>
-      <td>${a.currency || ""}</td>
-      <td>${a.liquidity_status || ""}</td>
-      <td>${a.ticker_symbol || ""}</td>
+      <td>${esc(a.account_name)}</td>
+      <td>${esc(a.institution)}</td>
+      <td>${esc(a.asset_category)}</td>
+      <td>${esc(a.account_type)}</td>
+      <td>${esc(a.currency)}</td>
+      <td>${esc(a.liquidity_status)}</td>
+      <td>${esc(a.ticker_symbol)}</td>
       <td>${a.is_active ? "Yes" : "No"}</td>
       <td data-current-value-for="${a.id}"></td>
       <td class="actions">
@@ -226,10 +226,10 @@ async function loadDashboard() {
   const valuationsBody = document.getElementById("valuationsBody");
   valuationsBody.innerHTML = dashboardData.valuations.map(v => `
     <tr>
-      <td>${v.account_name}</td>
+      <td>${esc(v.account_name)}</td>
       <td>${v.valuation_date}</td>
       <td class="numeric">${v.quantity == null ? "" : Number(v.quantity).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-      <td class="numeric">${v.current_value_original == null ? "" : `${v.currency || ""} ${Number(v.current_value_original).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`}</td>
+      <td class="numeric">${v.current_value_original == null ? "" : `${esc(v.currency)} ${Number(v.current_value_original).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`}</td>
       ${(() => {
           const costBasis = (v.quantity != null && v.avg_purchase_price != null) ? v.quantity * v.avg_purchase_price : null;
           const unrealized = (costBasis != null && v.current_value_original != null) ? v.current_value_original - costBasis : null;
@@ -244,7 +244,7 @@ async function loadDashboard() {
       })()}
       <td class="numeric">${v.exchange_rate_to_chf == null ? "" : Number(v.exchange_rate_to_chf).toFixed(4)}</td>
       <td class="numeric strong">CHF ${Number(v.current_value_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-      <td>${v.liquidity_status || ""}</td>
+      <td>${esc(v.liquidity_status)}</td>
       <td class="actions">
         <button class="icon-btn" title="Edit" onclick="editValuation(${v.id})">
           <i class="fa-regular fa-pen-to-square"></i>
@@ -265,7 +265,7 @@ async function loadDashboard() {
       <td class="total-value">CHF ${Number(s.total_networth_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
       <td class="mom-value">${s.mom_change_chf == null ? "" : "CHF " + Number(s.mom_change_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
       <td class="mom-pct">${s.mom_change_pct == null ? "" : Number(s.mom_change_pct).toFixed(2) + "%"}</td>
-      <td>${s.notes || ""}</td>
+      <td>${esc(s.notes)}</td>
       <td class="actions">
         <button class="icon-btn" title="Edit" onclick="editSnapshot(${s.id})">
           <i class="fa-regular fa-pen-to-square"></i>

@@ -1,20 +1,22 @@
 import pandas as pd
 import os, re
 import hashlib
+import logging
 from typing import List, Dict, Any
-from abc import ABC, abstractmethod
+from parsers.base_parser import BaseParser
 from utils.file_utils import read_file_lines
 from utils.number_utils import to_float
-from models.transaction import Transaction, TransactionType  
+from models.transaction import Transaction, TransactionType
 
-class BaseParser(ABC):
-    @abstractmethod
-    def parse(self, filepath: str) -> List[Transaction]:
-        pass
+logger = logging.getLogger(__name__)
 
 class GenericParser(BaseParser):
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], exclude_patterns: List[str] = ()):
         self.config = {k: self._clean_config_value(v) for k, v in config.items()}
+        # Per-user description patterns to skip (internal transfers etc.),
+        # configured on the Settings page.
+        self.exclude_patterns = [p.strip() for p in exclude_patterns if p and p.strip()]
+        self.excluded_count = 0
 
     def parse(self, filepath: str) -> List[Transaction]:
         return self._parse_file(filepath, self.config)
@@ -23,9 +25,13 @@ class GenericParser(BaseParser):
 
         skiprows = self._get_skiprows(read_file_lines(filepath), config.get('header', ''))
         sep = config.get('sep', ';')  # Use config or default ;     
-        df = pd.read_csv(filepath, sep=sep, skiprows=skiprows, encoding=config.get('encoding', 'latin1'), dtype=str, on_bad_lines='skip')
+        bad_lines = []
+        df = pd.read_csv(filepath, sep=sep, skiprows=skiprows, encoding=config.get('encoding', 'latin1'), dtype=str,
+                         engine='python', on_bad_lines=lambda line: bad_lines.append(line))  # returns None -> skip
+        if bad_lines:
+            logger.warning("%s: skipped %d malformed lines", os.path.basename(filepath), len(bad_lines))
         df.columns = df.columns.str.strip() # Clean column names
-        df = df.fillna('').dropna(how='all')  # Clean NaNs/empty
+        df = df.fillna('')
 
         # Dates
         date_col = config['date_col']
@@ -38,27 +44,18 @@ class GenericParser(BaseParser):
         else:
             df['description'] = df[desc_cols].str.strip()
 
-        # After description building
-        print("=== DEBUG: before exclusions/filtering ===")
-        print("Columns:", df.columns.tolist())
-        print("Date sample:", df['date'].head().tolist())
-        print("Description sample:", df['description'].head().tolist())
-        print("Row count:", len(df))
         
         # Drop rows with no date or description - bad data
+        rows_read = len(df)
         df = df[df['date'].notna() & (df['description'].str.strip() != '')]
-        
-        # Early validation
-        print("=== DEBUG: after date/description filter ===")
-        print("Row count:", len(df))
-        print("Any 'Saldo' in descriptions?", any('saldo' in str(d).lower() for d in df['description']))
+        logger.debug("%s: %d rows read, %d with date and description",
+                     os.path.basename(filepath), rows_read, len(df))
         
         # Filter exclusions 
-        df = self._apply_exclusions(df, config)
+        rows_before = len(df)
+        df = self._apply_exclusions(df, self.exclude_patterns)
+        self.excluded_count = rows_before - len(df)
 
-        # After exclusions
-        print("=== DEBUG: after exclusions ===")
-        print("Row count:", len(df))
         
         # Amount/Type
         if 'debit_col' in config:
@@ -83,9 +80,10 @@ class GenericParser(BaseParser):
         df = df.dropna(subset=['date', 'amount'])
 
         # Generate IDs
-        df['transactionId'] = df[config.get('id_col', '')] \
-            .str.strip() if config.get('id_col') and config['id_col'] in df.columns else \
-            df.apply(lambda row: GenericParser._generate_id(row['date'], row['description'], row['amount']), axis=1)
+        if config.get('id_col') and config['id_col'] in df.columns:
+            df['transactionId'] = df[config['id_col']].str.strip()
+        else:
+            df['transactionId'] = GenericParser._generate_ids(df)
 
         transactions = []
         for _, row in df.iterrows():
@@ -139,9 +137,30 @@ class GenericParser(BaseParser):
         return hashlib.md5(key.encode()).hexdigest()[:12]
 
     @staticmethod
-    def _apply_exclusions(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
-        """Exclude transactions whose descriptions match configured literal patterns."""
-        exclude_patterns = config.get('exclude_patterns', [])
+    def _generate_ids(df: pd.DataFrame) -> pd.Series:
+        """Hash IDs that stay unique for genuinely identical rows.
+
+        Two identical purchases on the same day (same date/description/amount)
+        used to hash to the same ID, so the second was dropped on insert. The
+        n-th repeat within a file now gets the occurrence number mixed in. The
+        first occurrence keeps the original hash, so re-importing files that
+        were already imported still de-duplicates against existing rows.
+        """
+        base = pd.Series(
+            [GenericParser._generate_id(d, desc, amt)
+             for d, desc, amt in zip(df['date'], df['description'], df['amount'])],
+            index=df.index,
+        )
+        occurrence = base.groupby(base).cumcount()
+        return pd.Series(
+            [b if n == 0 else hashlib.md5(f"{b}-{n}".encode()).hexdigest()[:12]
+             for b, n in zip(base, occurrence)],
+            index=df.index,
+        )
+
+    @staticmethod
+    def _apply_exclusions(df: pd.DataFrame, exclude_patterns: List[str]) -> pd.DataFrame:
+        """Exclude transactions whose descriptions contain any of the patterns (case-insensitive)."""
         if not exclude_patterns:
             return df
 
@@ -151,7 +170,7 @@ class GenericParser(BaseParser):
         is_excluded = df['description'].str.contains(pattern, case=False, na=False, regex=True)
         dropped = is_excluded.sum()
         df = df[~is_excluded]
-        print(f"Excluded {dropped} rows matching exclusion patterns")
+        logger.debug("Excluded %d rows matching exclusion patterns", dropped)
         return df
 
 

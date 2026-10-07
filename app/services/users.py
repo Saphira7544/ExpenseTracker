@@ -2,6 +2,9 @@ from sqlalchemy import text
 from app.db.session import engine
 from app.core.auth import hash_password, verify_password
 
+# Columns that are safe to hand to routes and templates (no password_hash).
+PUBLIC_COLUMNS = "id, email, is_approved, is_admin, created_at"
+
 def create_user(email: str, password: str) -> int:
     with engine.connect() as conn:
         result = conn.execute(
@@ -19,7 +22,7 @@ def create_user(email: str, password: str) -> int:
 def get_user_by_email(email: str) -> dict | None:
     with engine.connect() as conn:
         row = conn.execute(
-            text("SELECT * FROM users WHERE email = :email"),
+            text(f"SELECT {PUBLIC_COLUMNS} FROM users WHERE email = :email"),
             {"email": email.lower().strip()}
         ).mappings().first()
     return dict(row) if row else None
@@ -27,16 +30,35 @@ def get_user_by_email(email: str) -> dict | None:
 def get_user_by_id(user_id: int) -> dict | None:
     with engine.connect() as conn:
         row = conn.execute(
-            text("SELECT * FROM users WHERE id = :id"),
+            text(f"SELECT {PUBLIC_COLUMNS} FROM users WHERE id = :id"),
             {"id": user_id}
         ).mappings().first()
     return dict(row) if row else None
 
 def authenticate_user(email: str, password: str) -> dict | None:
-    user = get_user_by_email(email)
-    if not user:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(f"SELECT {PUBLIC_COLUMNS}, password_hash FROM users WHERE email = :email"),
+            {"email": email.lower().strip()}
+        ).mappings().first()
+    if not row or not verify_password(password, row["password_hash"]):
         return None
-    if not verify_password(password, user["password_hash"]):
-        return None
+    user = dict(row)
+    del user["password_hash"]
     return user
 
+def list_pending_users() -> list[dict]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT id, email, created_at FROM users WHERE is_approved = FALSE ORDER BY created_at")
+        ).mappings().all()
+    return [dict(r) for r in rows]
+
+def set_user_approved(user_id: int, approved: bool) -> bool:
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("UPDATE users SET is_approved = :approved WHERE id = :id"),
+            {"approved": approved, "id": user_id}
+        )
+        conn.commit()
+        return result.rowcount > 0

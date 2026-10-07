@@ -6,5 +6,5 @@ router = APIRouter()
 
 
 @router.get("/api/categories")
-async def list_categories(user: dict = Depends(get_current_user)):
+def list_categories(user: dict = Depends(get_current_user)):
     return CATEGORIES

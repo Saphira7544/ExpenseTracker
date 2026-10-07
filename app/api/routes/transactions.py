@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, field_validator
 from typing import Optional
+from app.core.categories import CATEGORIES
 from app.core.dependencies import get_current_user
 from app.services.transactions import (
     get_transactions, get_categories, get_accounts, update_transaction_category,
@@ -10,12 +11,21 @@ from app.services.transactions import (
 
 router = APIRouter()
 
+
+def _known_category(value: str) -> str:
+    # "Split" is set only by the split endpoint, never chosen directly.
+    if value not in CATEGORIES:
+        raise ValueError(f"Unknown category: {value}")
+    return value
+
+
 class BulkCategoryUpdate(BaseModel):
     transaction_ids: list[str]
     category: str
+    _check_category = field_validator("category")(_known_category)
 
 @router.patch("/api/transactions/bulk-category")
-async def bulk_category_update(
+def bulk_category_update(
     payload: BulkCategoryUpdate,
     user: dict = Depends(get_current_user)
 ):
@@ -24,9 +34,10 @@ async def bulk_category_update(
 
 class CategoryUpdate(BaseModel):
     category: str
+    _check_category = field_validator("category")(_known_category)
 
 @router.get("/api/transactions")
-async def list_transactions(
+def list_transactions(
     account: Optional[str] = None,
     category: Optional[str] = None,
     search: Optional[str] = None,
@@ -36,8 +47,8 @@ async def list_transactions(
     min_amount: Optional[float] = None,
     max_amount: Optional[float] = None,
     split_status: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     user: dict = Depends(get_current_user),
 ):
     return get_transactions(
@@ -46,20 +57,23 @@ async def list_transactions(
     )
 
 @router.get("/api/transactions/filters")
-async def filters(user: dict = Depends(get_current_user)):
+def filters(user: dict = Depends(get_current_user)):
     return {
         "categories": get_categories(user["id"]),
         "accounts": get_accounts(user["id"])
     }
 
 @router.patch("/api/transactions/{transaction_id}")
-async def update_category(
+def update_category(
     transaction_id: str,
     payload: CategoryUpdate,
     user: dict = Depends(get_current_user)
 ):
     updated = update_transaction_category(user["id"], transaction_id, payload.category)
     if not updated:
+        existing = get_transaction_by_id(user["id"], transaction_id)
+        if existing and existing["category"] == "Split":
+            raise HTTPException(status_code=409, detail="Transaction is split; undo the split first")
         raise HTTPException(status_code=404, detail="Transaction not found")
     return {"transactionId": transaction_id, "category": payload.category}
 
@@ -67,13 +81,15 @@ class SplitItem(BaseModel):
     category: str
     amount: float
     note: Optional[str] = None
+    _check_category = field_validator("category")(_known_category)
 
 class SplitRequest(BaseModel):
     splits: list[SplitItem]
-    remainder_category: Optional[str] = "Other"
+    remainder_category: str = "Other"
+    _check_category = field_validator("remainder_category")(_known_category)
 
 @router.post("/api/transactions/{transaction_id}/split")
-async def split_transaction(
+def split_transaction(
     transaction_id: str,
     payload: SplitRequest,
     user: dict = Depends(get_current_user)
@@ -82,15 +98,18 @@ async def split_transaction(
     if not original:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+    if any(s.amount <= 0 for s in payload.splits):
+        raise HTTPException(status_code=400, detail="Split amounts must be positive")
+
     total_split = sum(s.amount for s in payload.splits)
     if total_split > abs(original["amount"]) + 0.01:
         raise HTTPException(status_code=400, detail="Split amounts exceed transaction total")
 
-    save_splits(user["id"], transaction_id, [s.dict() for s in payload.splits], payload.remainder_category)
+    save_splits(user["id"], transaction_id, [s.model_dump() for s in payload.splits], payload.remainder_category)
     return {"status": "ok", "transactionId": transaction_id}
 
 @router.delete("/api/transactions/{transaction_id}/split")
-async def remove_split(
+def remove_split(
     transaction_id: str,
     user: dict = Depends(get_current_user)
 ):
@@ -98,7 +117,7 @@ async def remove_split(
     return {"status": "ok", "transactionId": transaction_id}
 
 @router.get("/api/transactions/count")
-async def transactions_count(
+def transactions_count(
     account: Optional[str] = None,
     category: Optional[str] = None,
     search: Optional[str] = None,
@@ -117,7 +136,7 @@ async def transactions_count(
     return {"total": total}
 
 @router.post("/api/transactions/{transaction_id}/revert-auto")
-async def revert_category(
+def revert_category(
     transaction_id: str,
     user: dict = Depends(get_current_user)
 ):
@@ -127,7 +146,7 @@ async def revert_category(
     return {"transactionId": transaction_id, "is_manual_category": False}
 
 @router.get("/api/transactions/{transaction_id}/split")
-async def get_splits(
+def get_splits(
     transaction_id: str,
     user: dict = Depends(get_current_user)
 ):

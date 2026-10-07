@@ -1,20 +1,8 @@
-from app.db.session import engine
-from sqlalchemy import text
-
-def _get_rules_from_db(user_id: int):
-    with engine.connect() as conn:
-        rows = conn.execute(
-            text("SELECT category, keyword FROM category_rules WHERE user_id = :user_id"), 
-            {"user_id": user_id}
-        ).mappings().all()
-    return [dict(r) for r in rows]
+from app.services.rules import get_rules_for_matching, match_category
 
 def rule_based_categorize(transactions, user_id: int) -> None:
-    rules = _get_rules_from_db(user_id)
+    rules = get_rules_for_matching(user_id)
     for t in transactions:
-        text_lower = t.description.lower()
-        for rule in rules:
-            if rule["keyword"] in text_lower:
-                t.category = rule["category"]
-                break
-
+        category = match_category(t.description, rules)
+        if category:
+            t.category = category

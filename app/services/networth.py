@@ -9,6 +9,32 @@ LOOKUP_TABLES = {
     "liquidity_statuses": ("networth_liquidity_statuses", "name"),
 }
 
+ACCOUNT_LOOKUP_FIELDS = {
+    "institution_id": "networth_institutions",
+    "asset_category_id": "networth_asset_categories",
+    "account_type_id": "networth_account_types",
+    "currency_id": "networth_currencies",
+    "liquidity_status_id": "networth_liquidity_statuses",
+}
+
+def _owned_by(conn, table: str, row_id: int, user_id: int) -> bool:
+    return conn.execute(
+        text(f"SELECT 1 FROM {table} WHERE id = :id AND user_id = :user_id"),
+        {"id": row_id, "user_id": user_id},
+    ).first() is not None
+
+def account_refs_belong_to_user(user_id: int, payload: dict) -> bool:
+    """IDs are plain integers from the client; make sure they are this user's rows."""
+    with engine.connect() as conn:
+        return all(
+            payload.get(field) is None or _owned_by(conn, table, payload[field], user_id)
+            for field, table in ACCOUNT_LOOKUP_FIELDS.items()
+        )
+
+def account_belongs_to_user(user_id: int, account_id: int) -> bool:
+    with engine.connect() as conn:
+        return _owned_by(conn, "networth_accounts", account_id, user_id)
+
 def list_lookup(table_key: str, user_id: int) -> list[dict]:
     table, value_col = LOOKUP_TABLES[table_key]
     with engine.connect() as conn:
@@ -232,7 +258,7 @@ def update_valuation(user_id: int, valuation_id: int, payload: dict) -> bool:
                 current_value_original = :current_value_original,
                 exchange_rate_to_chf = :exchange_rate_to_chf,
                 current_value_chf = :current_value_chf,
-                realized_pnl = :realized_pnl
+                realized_pnl = :realized_pnl,
                 source = :source,
                 note = :note
             WHERE id = :id AND user_id = :user_id

@@ -2,4 +2,5 @@
 from sqlalchemy import create_engine
 from app.core.config import settings
 
-engine = create_engine(settings.DATABASE_URL)
+# The single connection pool for the whole app (legacy_db reuses it too).
+engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)

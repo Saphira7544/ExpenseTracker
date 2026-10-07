@@ -4,11 +4,14 @@ from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from fastapi.exception_handlers import http_exception_handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from legacy_db.db import create_db, create_splits_table, create_rules_table, create_users_and_ownership
 from legacy_db.networth_db import create_networth_tables
+from legacy_db.settings_db import create_settings_tables
 
-from app.api.routes import uploads, transactions, rules, auth, networth, analytics, categories
+from app.api.routes import uploads, transactions, rules, auth, networth, analytics, categories, settings as settings_routes
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 
@@ -22,6 +25,7 @@ async def lifespan(app: FastAPI):
     create_splits_table()
     create_rules_table()  
     create_networth_tables()
+    create_settings_tables()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -33,6 +37,15 @@ app.include_router(rules.router)
 app.include_router(networth.router)
 app.include_router(analytics.router)
 app.include_router(categories.router)
+app.include_router(settings_routes.router)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def redirect_unauthenticated_pages(request: Request, exc: StarletteHTTPException):
+    # Pages send logged-out visitors to /login; API calls keep their JSON 401.
+    if exc.status_code == 401 and not request.url.path.startswith("/api/"):
+        return RedirectResponse(url="/login", status_code=302)
+    return await http_exception_handler(request, exc)
 
 @app.get("/")
 async def dashboard(request: Request, user: dict = Depends(get_current_user)):
@@ -90,4 +103,12 @@ async def monthly_page(request: Request, user: dict = Depends(get_current_user))
         request,
         "monthly.html",
         {"active_page": "monthly", "user": user}
+    )
+
+@app.get("/settings")
+async def settings_page(request: Request, user: dict = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {"active_page": "settings", "user": user}
     )

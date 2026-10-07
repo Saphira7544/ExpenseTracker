@@ -6,6 +6,14 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="/static/modern-theme.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        // Escape untrusted text before interpolating it into innerHTML templates.
+        function esc(value) {
+            return String(value ?? "").replace(/[&<>"']/g, c => (
+                { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+            ));
+        }
+    </script>
 </head>
 <body>
     <nav class="sidebar">
@@ -38,6 +46,10 @@
         </a>
         <a href="/networth/analytics" class="{{ 'active' if active_page == 'networth_charts' }}">
             <i class="fa-solid fa-chart-line"></i> Net Worth Analytics
+        </a>
+
+        <a href="/settings" class="{{ 'active' if active_page == 'settings' }}">
+            <i class="fa-solid fa-user-gear"></i> Settings
         </a>
 
         <form method="post" action="/logout" style="padding: 16px 24px; margin-top: auto;">

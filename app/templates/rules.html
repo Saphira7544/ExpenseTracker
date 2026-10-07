@@ -52,9 +52,9 @@ async function loadRules() {
   rules.forEach(r => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><span class="badge cat-${r.category.replace(/[\/\s]/g, "-")}">${r.category}</span></td>
-      <td>${r.keyword}</td>
-      <td><button class="danger delete-rule-btn" data-id="${r.id}">Delete</button></td>
+      <td><span class="badge cat-${esc(r.category.replace(/[\/\s]/g, "-"))}">${esc(r.category)}</span></td>
+      <td>${esc(r.keyword)}</td>
+      <td><button class="danger delete-rule-btn" data-id="${esc(r.id)}">Delete</button></td>
     `;
     tbody.appendChild(tr);
   });
@@ -92,7 +92,7 @@ document.getElementById("previewRerunBtn").onclick = async () => {
   tbody.innerHTML = "";
   lastPreview.forEach(row => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${row.description}</td><td>${row.old_category || "—"}</td><td>${row.new_category}</td>`;
+    tr.innerHTML = `<td>${esc(row.description)}</td><td>${esc(row.old_category || "—")}</td><td>${esc(row.new_category)}</td>`;
     tbody.appendChild(tr);
   });
 

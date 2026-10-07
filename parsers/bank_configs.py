@@ -1,11 +1,5 @@
 
 UBS_CONFIGS = {
-    "_bank_exclude_patterns": [
-        "Revolut",                  # Revolut top-ups (any account)        
-        "I. PEREIRA CASTELO",       # My name = internal
-        "Payment to card",          # Debit -> prepaid
-        "TRANSFER FROM ACCOUNT"     # Prepaid <- Debit     
-    ],
     "debit": {
         "bank": "ubs",
         "file_type": "debit",
@@ -49,9 +43,6 @@ UBS_CONFIGS = {
 # REVOLUT_CONFIGS = { ... }
 
 CGD_CONFIGS = {
-    "_bank_exclude_patterns": [       
-    ],
-
     "debit": {
         "bank": "cgd",
         "file_type": "debit",

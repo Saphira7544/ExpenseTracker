@@ -7,12 +7,11 @@ def detect_config(filepath: str) -> Dict[str, Any]:
     lines = read_file_lines(filepath)
 
     for bank_name, bank_data in ALL_BANK_CONFIGS.items():
-        bank_patterns = bank_data.get("_bank_exclude_patterns", [])
         for subtype, config in bank_data.items():
             if subtype.startswith("_"):
                 continue
             if _matches_header(config.get("header", []), lines):
-                return {**config, "exclude_patterns": bank_patterns}
+                return dict(config)
 
     raise ValueError(f"Could not detect file format for: {filepath}")
 

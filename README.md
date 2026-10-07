@@ -143,21 +143,25 @@ DB_NAME=expense_tracker
 UPLOAD_DIR=storage/uploads
 APP_SECRET_KEY=replace-with-a-long-random-secret
 SESSION_COOKIE_NAME=expense_tracker_session
+SESSION_MAX_AGE_DAYS=14
+COOKIE_SECURE=true
 ENABLE_LLM_CATEGORIZATION=true
 OPENAI_API_KEY=your-openai-api-key
 ```
+
+`APP_SECRET_KEY` is required: the app refuses to start without it (or with the placeholder value). Generate one with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+`COOKIE_SECURE=true` marks the session cookie HTTPS-only. Browsers still accept it on `http://localhost` / `http://127.0.0.1`; set it to `false` only if you access a non-HTTPS host other than localhost. Sessions expire after `SESSION_MAX_AGE_DAYS`.
 
 Use the exact database names, host, port, username, and password for your PostgreSQL installation. For a Railway deployment, set these values in Railway Variables instead of committing them to `.env`.
 
 ### Database URL behavior
 
-The application constructs this SQLAlchemy URL from the database variables:
-
-```text
-postgresql+psycopg2://DB_USER:DB_PASSWORD@DB_HOST:DB_PORT/DB_NAME
-```
-
-Do not put the literal text `None` in any database variable. Missing variables can produce an invalid URL and prevent the application from starting.
+If `DATABASE_URL` is set (Railway provides it), it is used as-is. Otherwise the URL is built from the `DB_*` variables; special characters in the password are escaped automatically. The app refuses to start if neither is configured.
 
 ### Secret handling
 
@@ -189,6 +193,8 @@ Start the application once after PostgreSQL and the environment variables are co
 - `networth_snapshots`.
 
 The startup process is implemented in `app/main.py` and calls the table-creation functions from `legacy_db/`. Table creation is idempotent because it uses `CREATE TABLE IF NOT EXISTS`.
+
+On databases created before transactions were keyed per user, startup also migrates the `transactions` primary key from `(transactionId)` to `(user_id, transactionId)`. This refuses to run while any transaction has a `NULL` `user_id`. Back up the database before the first start after upgrading.
 
 For a clean production database, let the application create the tables rather than manually creating a second, differently named schema.
 
@@ -222,15 +228,20 @@ The interactive API documentation is available at `/docs` when the app is runnin
 
 New registrations are created as unapproved accounts. The login route refuses access until `is_approved` is true.
 
-For local development, approve a user directly in PostgreSQL after registering:
+The first administrator has to be set directly in PostgreSQL:
 
 ```sql
 UPDATE users
-SET is_approved = TRUE
+SET is_approved = TRUE, is_admin = TRUE
 WHERE email = 'your@email.example';
 ```
 
-If your database schema includes administrator fields, grant administrator access only when needed and only to a trusted account. Use a database client or a controlled administrative process; never expose database credentials in the browser.
+After that, an admin can approve other users without SQL, e.g. from `/docs` while logged in:
+
+- `GET /admin/pending-users` lists accounts waiting for approval.
+- `POST /admin/users/{user_id}/approve` approves one.
+
+Grant administrator access only to trusted accounts.
 
 ## Configure OpenAI categorization
 
@@ -262,7 +273,7 @@ LLM calls may incur usage costs. Set usage limits and monitor the associated Ope
 7. The application detects the bank format, parses the transactions, attaches them to the current user, applies rules, optionally sends remaining descriptions to OpenAI, and inserts the transactions into PostgreSQL.
 8. Review and correct categories from `/transactions`.
 
-Uploaded files are saved under `UPLOAD_DIR`, which defaults to `storage/uploads`. Treat uploaded bank files as sensitive personal data. In a production deployment, use persistent storage if uploaded files must survive redeployments.
+Uploaded files (max 10 MB each) are saved under `UPLOAD_DIR/<user id>/<random id>/`, which defaults to `storage/uploads`. Treat uploaded bank files as sensitive personal data. In a production deployment, use persistent storage if uploaded files must survive redeployments.
 
 ## Main API areas
 
@@ -344,7 +355,7 @@ DB_PORT
 DB_NAME
 ```
 
-Railway may provide a `DATABASE_URL` variable, but this application currently constructs its own URL from the five `DB_*` variables. Map the Railway PostgreSQL values to those names, or update the configuration code to consume `DATABASE_URL` consistently before deploying.
+Alternatively, reference Railway's `DATABASE_URL` variable from the PostgreSQL service; when it is set the `DB_*` variables are not needed.
 
 Also add:
 

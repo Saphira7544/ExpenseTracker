@@ -1,228 +1,92 @@
-from sqlalchemy import text, bindparam
+import pandas as pd
+from sqlalchemy import text
+
 from app.db.session import engine
-
-EXCLUDED_FROM_EXPENSES = ["Investments"]
+from app.services import analytics_core as core
+from app.services import fx
+from app.services.settings import get_settings, SUPPORTED_DISPLAY_CURRENCIES
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers
+# Shared loading: transactions -> lines (splits expanded) -> converted values
 # ---------------------------------------------------------------------------
 
-def get_available_months(user_id: int) -> list[str]:
+def _load_frames(user_id: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT DISTINCT to_char(date, 'YYYY-MM') AS ym
+        tx_rows = conn.execute(text("""
+            SELECT transactionId AS transaction_id, date, description, category, amount, currency
             FROM transactions
             WHERE user_id = :user_id
-            ORDER BY ym DESC
-        """), {"user_id": user_id}).all()
-    return [r[0] for r in rows]
-
-
-def get_available_years(user_id: int) -> list[str]:
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT DISTINCT to_char(date, 'YYYY') AS yr
-            FROM transactions
+        """), {"user_id": user_id}).mappings().all()
+        split_rows = conn.execute(text("""
+            SELECT transactionId AS transaction_id, category, amount
+            FROM transaction_splits
             WHERE user_id = :user_id
-            ORDER BY yr DESC
-        """), {"user_id": user_id}).all()
-    return [r[0] for r in rows]
+        """), {"user_id": user_id}).mappings().all()
+
+    tx = pd.DataFrame([dict(r) for r in tx_rows], columns=core.TX_COLUMNS)
+    tx["date"] = pd.to_datetime(tx["date"])
+    tx["currency"] = tx["currency"].astype(str).str.strip().str.upper()
+    splits = pd.DataFrame([dict(r) for r in split_rows], columns=core.SPLIT_COLUMNS)
+    return tx, splits
+
+
+def _prepare(user_id: int, currency: str | None) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Lines with `value` (in the display currency) and `kind`, the raw
+    transactions, and metadata about the conversion for the response."""
+    settings = get_settings(user_id)
+    target = currency if currency in SUPPORTED_DISPLAY_CURRENCIES else settings["display_currency"]
+
+    tx, splits = _load_frames(user_id)
+    lines = core.build_lines(tx, splits)
+
+    missing: list[str] = []
+    if lines.empty:
+        lines["value"] = pd.Series(dtype=float)
+    else:
+        currencies = set(lines["currency"]) | {target}
+        fx.ensure_rates(currencies, lines["date"].min().date())
+        lines["value"], missing = fx.convert(lines, target, fx.load_rates(currencies))
+        lines = lines.dropna(subset=["value"])
+
+    lines = core.classify(lines, settings["income_categories"], settings["investment_categories"])
+    meta = {
+        "currency": target,
+        "available_currencies": SUPPORTED_DISPLAY_CURRENCIES,
+        "converted_currencies": sorted(set(tx["currency"]) - {target}),
+        "fx_missing": missing,
+        "fx_source": fx.SOURCE_LABEL,
+    }
+    return lines, tx, meta
+
 
 # ---------------------------------------------------------------------------
 # DASHBOARD (annual / all-time) — used by "/"
 # ---------------------------------------------------------------------------
 
-def get_overview_trend(user_id: int, year: str | None) -> list[dict]:
+def get_overview_bundle(user_id: int, year: str | None = None, currency: str | None = None) -> dict:
     """
-    Income vs TRUE expenses (excluding Investments) vs invested vs net.
     - year == None or 'all'  -> one point PER YEAR
     - year == 'YYYY'         -> one point PER MONTH within that year
     """
-    query_all = text("""
-        SELECT
-            to_char(date, 'YYYY') AS period,
-            COALESCE(SUM(amount) FILTER (WHERE amount > 0), 0) AS income,
-            COALESCE(SUM(amount) FILTER (
-                WHERE amount < 0 AND COALESCE(category, '') NOT IN :excluded
-            ), 0) AS expenses,
-            COALESCE(SUM(ABS(amount)) FILTER (
-                WHERE amount < 0 AND category IN :excluded
-            ), 0) AS invested
-        FROM transactions
-        WHERE user_id = :user_id
-        GROUP BY to_char(date, 'YYYY')
-        ORDER BY period ASC
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    query_year = text("""
-        SELECT
-            to_char(date, 'YYYY-MM') AS period,
-            COALESCE(SUM(amount) FILTER (WHERE amount > 0), 0) AS income,
-            COALESCE(SUM(amount) FILTER (
-                WHERE amount < 0 AND COALESCE(category, '') NOT IN :excluded
-            ), 0) AS expenses,
-            COALESCE(SUM(ABS(amount)) FILTER (
-                WHERE amount < 0 AND category IN :excluded
-            ), 0) AS invested
-        FROM transactions
-        WHERE user_id = :user_id
-          AND to_char(date, 'YYYY') = :year
-        GROUP BY to_char(date, 'YYYY-MM')
-        ORDER BY period ASC
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    with engine.connect() as conn:
-        if not year or year == "all":
-            rows = conn.execute(query_all, {
-                "user_id": user_id, "excluded": EXCLUDED_FROM_EXPENSES
-            }).mappings().all()
-        else:
-            rows = conn.execute(query_year, {
-                "user_id": user_id, "year": year, "excluded": EXCLUDED_FROM_EXPENSES
-            }).mappings().all()
-
-    result = []
-    for r in rows:
-        income = float(r["income"] or 0)
-        expenses = float(r["expenses"] or 0)
-        invested = float(r["invested"] or 0)
-        result.append({
-            "period": r["period"],
-            "income": income,
-            "expenses": expenses,
-            "invested": invested,
-            "net": income + expenses,  # expenses already negative; investments excluded
-        })
-    return result
-
-def get_overview_summary(user_id: int, year: str | None) -> dict:
-    """
-    Aggregate totals for the selected year (or all-time) — the same
-    underlying numbers as the trend chart, just summed into one figure
-    each, for the Dashboard summary cards.
-    """
-    trend = get_overview_trend(user_id, year)
-    income = sum(r["income"] for r in trend)
-    expenses = sum(r["expenses"] for r in trend)
-    invested = sum(r["invested"] for r in trend)
-    net = income + expenses
-    return {
-        "income": income,
-        "expenses": expenses,
-        "invested": invested,
-        "net": net,
-        "savings_rate": (net / income * 100) if income > 0 else 0,
-    }
-
-def get_overview_savings_rate(user_id: int, year: str | None) -> list[dict]:
-    trend = get_overview_trend(user_id, year)
-    result = []
-    for row in trend:
-        income = row["income"]
-        net = row["net"]
-        rate = (net / income * 100) if income > 0 else 0
-        result.append({
-            "period": row["period"],
-            "savings_rate": round(rate, 1),
-            "net": net,
-            "income": income,
-        })
-    return result
-
-
-def get_overview_category_trend(user_id: int, year: str | None, top_n: int = 6) -> dict:
-    """
-    Spending per category per period. Investments (and anything else in
-    EXCLUDED_FROM_EXPENSES) are left out entirely — this chart is about
-    actual spending, not money moved into investments.
-    """
-    top_query_all = text("""
-        SELECT COALESCE(category, 'Uncategorized') AS category, SUM(ABS(amount)) AS total
-        FROM transactions
-        WHERE user_id = :user_id AND amount < 0
-          AND COALESCE(category, '') NOT IN :excluded
-        GROUP BY COALESCE(category, 'Uncategorized')
-        ORDER BY total DESC
-        LIMIT :top_n
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    trend_query_all = text("""
-        SELECT
-            to_char(date, 'YYYY') AS period,
-            COALESCE(category, 'Uncategorized') AS category,
-            SUM(ABS(amount)) AS total
-        FROM transactions
-        WHERE user_id = :user_id AND amount < 0
-          AND COALESCE(category, '') NOT IN :excluded
-        GROUP BY to_char(date, 'YYYY'), COALESCE(category, 'Uncategorized')
-        ORDER BY period ASC
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    top_query_year = text("""
-        SELECT COALESCE(category, 'Uncategorized') AS category, SUM(ABS(amount)) AS total
-        FROM transactions
-        WHERE user_id = :user_id AND amount < 0 AND to_char(date, 'YYYY') = :year
-          AND COALESCE(category, '') NOT IN :excluded
-        GROUP BY COALESCE(category, 'Uncategorized')
-        ORDER BY total DESC
-        LIMIT :top_n
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    trend_query_year = text("""
-        SELECT
-            to_char(date, 'YYYY-MM') AS period,
-            COALESCE(category, 'Uncategorized') AS category,
-            SUM(ABS(amount)) AS total
-        FROM transactions
-        WHERE user_id = :user_id AND amount < 0 AND to_char(date, 'YYYY') = :year
-          AND COALESCE(category, '') NOT IN :excluded
-        GROUP BY to_char(date, 'YYYY-MM'), COALESCE(category, 'Uncategorized')
-        ORDER BY period ASC
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    with engine.connect() as conn:
-        if not year or year == "all":
-            top_rows = conn.execute(top_query_all, {
-                "user_id": user_id, "excluded": EXCLUDED_FROM_EXPENSES, "top_n": top_n
-            }).all()
-            rows = conn.execute(trend_query_all, {
-                "user_id": user_id, "excluded": EXCLUDED_FROM_EXPENSES
-            }).mappings().all()
-        else:
-            top_rows = conn.execute(top_query_year, {
-                "user_id": user_id, "year": year, "excluded": EXCLUDED_FROM_EXPENSES, "top_n": top_n
-            }).all()
-            rows = conn.execute(trend_query_year, {
-                "user_id": user_id, "year": year, "excluded": EXCLUDED_FROM_EXPENSES
-            }).mappings().all()
-
-    top_categories = [r[0] for r in top_rows]
-    periods = sorted({r["period"] for r in rows})
-    series = {cat: {p: 0.0 for p in periods} for cat in top_categories}
-    series["Other"] = {p: 0.0 for p in periods}
-
-    for r in rows:
-        p, cat, total = r["period"], r["category"], float(r["total"] or 0)
-        if cat in series and cat != "Other":
-            series[cat][p] += total
-        else:
-            series["Other"][p] += total
-
-    return {"periods": periods, "series": series}
-
-
-def get_overview_bundle(user_id: int, year: str | None = None) -> dict:
-    available_years = get_available_years(user_id)
+    lines, tx, meta = _prepare(user_id, currency)
+    available_years = sorted(set(tx["date"].dt.strftime("%Y")), reverse=True)
     selected_year = year or "all"
 
+    if selected_year == "all":
+        scoped, fmt = lines, "%Y"
+    else:
+        scoped, fmt = lines[core.periods(lines, "%Y") == selected_year], "%Y-%m"
+
+    trend = core.trend(scoped, fmt)
     return {
         "available_years": available_years,
         "selected_year": selected_year,
-        "summary": get_overview_summary(user_id, selected_year),
-        "income_expenses_trend": get_overview_trend(user_id, selected_year),
-        "savings_rate_trend": get_overview_savings_rate(user_id, selected_year),
-        "spending_by_category_trend": get_overview_category_trend(user_id, selected_year, 6),
+        "summary": core.totals(scoped),
+        "income_expenses_trend": trend,
+        "savings_rate_trend": core.savings_rate_trend(trend),
+        "spending_by_category_trend": core.category_trend(scoped, fmt, 6),
+        **meta,
     }
 
 
@@ -230,142 +94,27 @@ def get_overview_bundle(user_id: int, year: str | None = None) -> dict:
 # MONTHLY — used by "/monthly"
 # ---------------------------------------------------------------------------
 
-def get_month_summary(user_id: int, month: str) -> dict:
-    summary_query = text("""
-        SELECT
-            COALESCE(SUM(amount) FILTER (WHERE amount > 0), 0) AS income,
-            COALESCE(SUM(amount) FILTER (
-                WHERE amount < 0 AND COALESCE(category, '') NOT IN :excluded
-            ), 0) AS expenses,
-            COALESCE(SUM(ABS(amount)) FILTER (
-                WHERE amount < 0 AND category IN :excluded
-            ), 0) AS invested,
-            COUNT(*) AS txn_count,
-            COUNT(*) FILTER (
-                WHERE amount < 0 AND COALESCE(category, '') NOT IN :excluded
-            ) AS expense_count
-        FROM transactions
-        WHERE user_id = :user_id
-          AND to_char(date, 'YYYY-MM') = :month
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    biggest_query = text("""
-        SELECT description, ABS(amount) AS amount
-        FROM transactions
-        WHERE user_id = :user_id
-          AND to_char(date, 'YYYY-MM') = :month
-          AND amount < 0
-          AND COALESCE(category, '') NOT IN :excluded
-        ORDER BY ABS(amount) DESC
-        LIMIT 1
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    with engine.connect() as conn:
-        row = conn.execute(summary_query, {
-            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES
-        }).mappings().first()
-
-        biggest = conn.execute(biggest_query, {
-            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES
-        }).mappings().first()
-
-    summary = dict(row) if row else {
-        "income": 0, "expenses": 0, "invested": 0, "net": 0,
-        "txn_count": 0, "expense_count": 0
-    }
-
-    income = float(summary["income"] or 0)
-    expenses = float(summary["expenses"] or 0)
-    summary["income"] = income
-    summary["expenses"] = expenses
-    summary["invested"] = float(summary["invested"] or 0)
-    summary["net"] = income + expenses  # investments excluded from this
-
-    expense_count = summary.get("expense_count") or 0
-    summary["avg_expense"] = abs(expenses) / expense_count if expense_count > 0 else 0
-    summary["savings_rate"] = (summary["net"] / income * 100) if income > 0 else 0
-    summary["biggest_expense_description"] = biggest["description"] if biggest else None
-    summary["biggest_expense_amount"] = float(biggest["amount"]) if biggest else 0
-
-    return summary
-
-
-def get_category_breakdown(user_id: int, month: str) -> list[dict]:
-    """
-    Expenses by category for the pie chart / table. Investments are
-    excluded entirely — they get their own "invested" figure instead of
-    a slice here.
-    """
-    query = text("""
-        SELECT
-            COALESCE(category, 'Uncategorized') AS category,
-            SUM(ABS(amount)) AS total
-        FROM transactions
-        WHERE user_id = :user_id
-          AND to_char(date, 'YYYY-MM') = :month
-          AND amount < 0
-          AND COALESCE(category, '') NOT IN :excluded
-        GROUP BY COALESCE(category, 'Uncategorized')
-        ORDER BY total DESC
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    with engine.connect() as conn:
-        rows = conn.execute(query, {
-            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES
-        }).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def get_top_merchants(user_id: int, month: str, limit: int = 8) -> list[dict]:
-    query = text("""
-        SELECT description, SUM(ABS(amount)) AS total, COUNT(*) AS occurrences
-        FROM transactions
-        WHERE user_id = :user_id
-          AND to_char(date, 'YYYY-MM') = :month
-          AND amount < 0
-          AND COALESCE(category, '') NOT IN :excluded
-        GROUP BY description
-        ORDER BY total DESC
-        LIMIT :limit
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    with engine.connect() as conn:
-        rows = conn.execute(query, {
-            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES, "limit": limit
-        }).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def get_daily_spend(user_id: int, month: str) -> list[dict]:
-    query = text("""
-        SELECT date, SUM(ABS(amount)) AS total
-        FROM transactions
-        WHERE user_id = :user_id
-          AND to_char(date, 'YYYY-MM') = :month
-          AND amount < 0
-          AND COALESCE(category, '') NOT IN :excluded
-        GROUP BY date
-        ORDER BY date ASC
-    """).bindparams(bindparam("excluded", expanding=True))
-
-    with engine.connect() as conn:
-        rows = conn.execute(query, {
-            "user_id": user_id, "month": month, "excluded": EXCLUDED_FROM_EXPENSES
-        }).mappings().all()
-    return [{"date": r["date"].isoformat(), "total": float(r["total"] or 0)} for r in rows]
-
-
-def get_monthly_bundle(user_id: int, month: str | None = None) -> dict:
-    available_months = get_available_months(user_id)
+def get_monthly_bundle(user_id: int, month: str | None = None, currency: str | None = None) -> dict:
+    lines, tx, meta = _prepare(user_id, currency)
+    tx_months = tx["date"].dt.strftime("%Y-%m")
+    available_months = sorted(set(tx_months), reverse=True)
     selected_month = month or (available_months[0] if available_months else None)
 
+    if not selected_month:
+        return {
+            "available_months": [], "selected_month": None, "month_summary": None,
+            "category_breakdown": [], "top_merchants": [], "daily_spend": [], **meta,
+        }
+
+    scoped = lines[core.periods(lines, "%Y-%m") == selected_month]
     return {
         "available_months": available_months,
         "selected_month": selected_month,
-        "month_summary": get_month_summary(user_id, selected_month) if selected_month else None,
-        "category_breakdown": get_category_breakdown(user_id, selected_month) if selected_month else [],
-        "top_merchants": get_top_merchants(user_id, selected_month) if selected_month else [],
-        "daily_spend": get_daily_spend(user_id, selected_month) if selected_month else [],
+        "month_summary": core.month_summary(scoped, txn_count=int((tx_months == selected_month).sum())),
+        "category_breakdown": core.category_breakdown(scoped),
+        "top_merchants": core.top_merchants(scoped),
+        "daily_spend": core.daily_spend(scoped),
+        **meta,
     }
 
 

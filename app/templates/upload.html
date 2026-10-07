@@ -17,7 +17,7 @@
   <h1>Results</h1>
   <table>
     <thead>
-      <tr><th>File</th><th>Parsed</th><th>Rule matched</th><th>LLM matched</th></tr>
+      <tr><th>File</th><th>Parsed</th><th>Excluded</th><th>Rule matched</th><th>LLM matched</th></tr>
     </thead>
     <tbody id="resultsBody"></tbody>
   </table>
@@ -57,7 +57,7 @@ function renderFileList() {
   selectedFiles.forEach(f => {
     const div = document.createElement("div");
     div.className = "file-item";
-    div.innerHTML = `<span>${f.name}</span><span class="status-pending" id="status-${f.name}">Pending</span>`;
+    div.innerHTML = `<span>${esc(f.name)}</span><span class="status-pending" id="status-${esc(f.name)}">Pending</span>`;
     fileList.appendChild(div);
   });
 }
@@ -72,7 +72,6 @@ uploadBtn.onclick = async () => {
   try {
     const res = await fetch("/api/uploads", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: formData,
     });
 
@@ -95,7 +94,7 @@ uploadBtn.onclick = async () => {
       document.getElementById(`status-${r.filename}`).className = "status-success";
 
       const row = document.createElement("tr");
-      row.innerHTML = `<td>${r.filename}</td><td>${r.parsed}</td><td>${r.rule_matched}</td><td>${r.llm_matched}</td>`;
+      row.innerHTML = `<td>${esc(r.filename)}</td><td>${r.parsed}</td><td>${r.excluded}</td><td>${r.rule_matched}</td><td>${r.llm_matched}</td>`;
       resultsBody.appendChild(row);
     });
   } catch (e) {

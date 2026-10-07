@@ -5,43 +5,50 @@ def attach_user_to_transactions(transactions, user_id: int) -> None:
     for t in transactions:
         t.user_id = user_id
 
-def get_transactions(user_id, account=None, category=None, search=None, date_from=None, date_to=None,
-                      amount_sign=None, min_amount=None, max_amount=None, split_status=None,
-                      limit=50, offset=0):
-    query = "SELECT * FROM transactions WHERE user_id = :user_id AND 1=1"
+def _filter_clause(user_id, account=None, category=None, search=None, date_from=None, date_to=None,
+                   amount_sign=None, min_amount=None, max_amount=None, split_status=None):
+    """WHERE clause + params shared by the list and count queries."""
+    where = "WHERE user_id = :user_id"
     params = {"user_id": user_id}
 
     if account:
-        query += " AND account = :account"
+        where += " AND account = :account"
         params["account"] = account
     if category:
-        query += " AND category = :category"
+        where += " AND category = :category"
         params["category"] = category
     if search:
-        query += " AND description ILIKE :search"
+        where += " AND description ILIKE :search"
         params["search"] = f"%{search}%"
     if date_from:
-        query += " AND date >= :date_from"
+        where += " AND date >= :date_from"
         params["date_from"] = date_from
     if date_to:
-        query += " AND date <= :date_to"
+        where += " AND date <= :date_to"
         params["date_to"] = date_to
     if amount_sign == "positive":
-        query += " AND amount > 0"
+        where += " AND amount > 0"
     elif amount_sign == "negative":
-        query += " AND amount < 0"
+        where += " AND amount < 0"
     if min_amount is not None:
-        query += " AND ABS(amount) >= :min_amount"
+        where += " AND ABS(amount) >= :min_amount"
         params["min_amount"] = min_amount
     if max_amount is not None:
-        query += " AND ABS(amount) <= :max_amount"
+        where += " AND ABS(amount) <= :max_amount"
         params["max_amount"] = max_amount
     if split_status == "split":
-        query += " AND category = 'Split'"
+        where += " AND category = 'Split'"
     elif split_status == "not_split":
-        query += " AND (category IS NULL OR category != 'Split')"
+        where += " AND (category IS NULL OR category != 'Split')"
 
-    query += " ORDER BY date DESC, transactionId ASC LIMIT :limit OFFSET :offset"
+    return where, params
+
+def get_transactions(user_id, account=None, category=None, search=None, date_from=None, date_to=None,
+                      amount_sign=None, min_amount=None, max_amount=None, split_status=None,
+                      limit=50, offset=0):
+    where, params = _filter_clause(user_id, account, category, search, date_from, date_to,
+                                   amount_sign, min_amount, max_amount, split_status)
+    query = f"SELECT * FROM transactions {where} ORDER BY date DESC, transactionId ASC LIMIT :limit OFFSET :offset"
     params["limit"] = limit
     params["offset"] = offset
 
@@ -51,42 +58,10 @@ def get_transactions(user_id, account=None, category=None, search=None, date_fro
 
 def count_transactions(user_id, account=None, category=None, search=None, date_from=None, date_to=None,
                         amount_sign=None, min_amount=None, max_amount=None, split_status=None):
-    query = "SELECT COUNT(*) FROM transactions WHERE user_id = :user_id AND 1=1"
-    params = {"user_id": user_id}
-
-    if account:
-        query += " AND account = :account"
-        params["account"] = account
-    if category:
-        query += " AND category = :category"
-        params["category"] = category
-    if search:
-        query += " AND description ILIKE :search"
-        params["search"] = f"%{search}%"
-    if date_from:
-        query += " AND date >= :date_from"
-        params["date_from"] = date_from
-    if date_to:
-        query += " AND date <= :date_to"
-        params["date_to"] = date_to
-    if amount_sign == "positive":
-        query += " AND amount > 0"
-    elif amount_sign == "negative":
-        query += " AND amount < 0"
-    if min_amount is not None:
-        query += " AND ABS(amount) >= :min_amount"
-        params["min_amount"] = min_amount
-    if max_amount is not None:
-        query += " AND ABS(amount) <= :max_amount"
-        params["max_amount"] = max_amount
-    if split_status == "split":
-        query += " AND category = 'Split'"
-    elif split_status == "not_split":
-        query += " AND (category IS NULL OR category != 'Split')"
-
+    where, params = _filter_clause(user_id, account, category, search, date_from, date_to,
+                                   amount_sign, min_amount, max_amount, split_status)
     with engine.connect() as conn:
-        result = conn.execute(text(query), params).scalar()
-    return result
+        return conn.execute(text(f"SELECT COUNT(*) FROM transactions {where}"), params).scalar()
 
 def get_categories(user_id: int):
     with engine.connect() as conn:
@@ -112,11 +87,18 @@ def get_transaction_by_id(user_id: int, transaction_id: str) -> dict | None:
 # Function to save splits for a specific transaction
 def save_splits(user_id: int, transaction_id: str, splits: list[dict], remainder_category: str = "Other") -> None:
     original = get_transaction_by_id(user_id, transaction_id)
+    if original is None:
+        raise ValueError("Transaction not found")
     total_amount = abs(original["amount"])
     allocated = sum(s["amount"] for s in splits)
     remainder = round(total_amount - allocated, 2)
 
     with engine.connect() as conn:
+        # Re-splitting replaces the previous split instead of stacking on it.
+        conn.execute(
+            text("DELETE FROM transaction_splits WHERE transactionId = :id AND user_id = :user_id"),
+            {"id": transaction_id, "user_id": user_id}
+        )
         for s in splits:
             conn.execute(
                 text("""
@@ -148,7 +130,15 @@ def save_splits(user_id: int, transaction_id: str, splits: list[dict], remainder
             )
 
         conn.execute(
-            text("UPDATE transactions SET category = 'Split' WHERE transactionId = :id AND user_id = :user_id"),
+            text("""
+                UPDATE transactions
+                SET category_before_split = CASE
+                        WHEN category IS DISTINCT FROM 'Split' THEN category
+                        ELSE category_before_split
+                    END,
+                    category = 'Split'
+                WHERE transactionId = :id AND user_id = :user_id
+            """),
             {"id": transaction_id, "user_id": user_id}
         )
         conn.commit()
@@ -161,7 +151,11 @@ def undo_split(user_id: int, transaction_id: str) -> None:
             {"id": transaction_id, "user_id": user_id}
         )
         conn.execute(
-            text("UPDATE transactions SET category = NULL WHERE transactionId = :id AND user_id = :user_id"),
+            text("""
+                UPDATE transactions
+                SET category = category_before_split, category_before_split = NULL
+                WHERE transactionId = :id AND user_id = :user_id AND category = 'Split'
+            """),
             {"id": transaction_id, "user_id": user_id}
         )
         conn.commit()
@@ -179,7 +173,7 @@ def get_splits_for_transaction(user_id: int, transaction_id: str) -> list[dict]:
 def update_transaction_category(user_id: int, transaction_id: str, category: str) -> bool:
     with engine.connect() as conn:
         result = conn.execute(
-            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = :id AND user_id = :user_id"),
+            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = :id AND user_id = :user_id AND category IS DISTINCT FROM 'Split'"),
             {"category": category, "id": transaction_id, "user_id": user_id}
         )
         conn.commit()
@@ -191,7 +185,7 @@ def bulk_update_category(user_id: int, transaction_ids: list[str], category: str
         return 0
     with engine.connect() as conn:
         result = conn.execute(
-            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = ANY(:ids) AND user_id = :user_id"),
+            text("UPDATE transactions SET category = :category, is_manual_category = TRUE WHERE transactionId = ANY(:ids) AND user_id = :user_id AND category IS DISTINCT FROM 'Split'"),
             {"category": category, "ids": transaction_ids, "user_id": user_id}
         )
         conn.commit()

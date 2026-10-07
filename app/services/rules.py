@@ -21,24 +21,35 @@ def delete_rule(rule_id: int, user_id: int) -> bool:
         conn.commit()
         return result.rowcount > 0
 
-def _match_category(description: str, rules: list[dict]) -> str | None:
-    text_lower = description.lower()
+def get_rules_for_matching(user_id: int) -> list[dict]:
+    """Rules in the order they are tried: longest (most specific) keyword
+    first, then oldest. Upload and re-run both use this, so the same
+    transaction always gets the same category."""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT category, keyword FROM category_rules WHERE user_id = :user_id ORDER BY LENGTH(keyword) DESC, id"),
+            {"user_id": user_id}
+        ).mappings().all()
+    return [dict(r) for r in rows]
+
+def match_category(description: str, rules: list[dict]) -> str | None:
+    text_lower = (description or "").lower()
     for rule in rules:
         if rule["keyword"] in text_lower:
             return rule["category"]
     return None
 
 def preview_rule_rerun(user_id: int) -> list[dict]:
-    rules = get_rules(user_id)
+    rules = get_rules_for_matching(user_id)
     with engine.connect() as conn:
         transactions = conn.execute(
-            text("SELECT transactionId, description, category FROM transactions WHERE is_manual_category = FALSE AND user_id = :user_id"),
+            text("SELECT transactionId, description, category FROM transactions WHERE is_manual_category = FALSE AND category IS DISTINCT FROM 'Split' AND user_id = :user_id"),
             {"user_id": user_id}
         ).mappings().all()
 
     affected = []
     for t in transactions:
-        new_category = _match_category(t["description"], rules)
+        new_category = match_category(t["description"], rules)
         if new_category and new_category != t["category"]:
             affected.append({
                 "transactionId": t["transactionid"],

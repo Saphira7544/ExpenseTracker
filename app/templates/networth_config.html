@@ -46,7 +46,7 @@ async function loadConfig() {
         <tbody>
           ${items.map(item => `
             <tr>
-              <td><input id="${key}-value-${item.id}" value="${item.value}" /></td>
+              <td><input id="${key}-value-${item.id}" value="${esc(item.value)}" /></td>
               <td><input id="${key}-sort-${item.id}" type="number" value="${item.sort_order}" style="width:90px;" /></td>
               <td><input id="${key}-active-${item.id}" type="checkbox" ${item.is_active ? "checked" : ""} /></td>
               <td>

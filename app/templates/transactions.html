@@ -139,9 +139,9 @@ async function loadFilters() {
   const res = await fetch("/api/transactions/filters");
   const data = await res.json();
   const accSel = document.getElementById("accountFilter");
-  data.accounts.forEach(a => accSel.innerHTML += `<option value="${a}">${a}</option>`);
+  data.accounts.forEach(a => accSel.innerHTML += `<option value="${esc(a)}">${esc(a)}</option>`);
   const catSel = document.getElementById("categoryFilter");
-  data.categories.forEach(c => catSel.innerHTML += `<option value="${c}">${c}</option>`);
+  data.categories.forEach(c => catSel.innerHTML += `<option value="${esc(c)}">${esc(c)}</option>`);
 
   const remSel = document.getElementById("remainderCategory");
   CATEGORIES.forEach(c => remSel.innerHTML += `<option value="${c}" ${c === "Other" ? "selected" : ""}>${c}</option>`);
@@ -193,30 +193,30 @@ async function loadTransactions() {
 
   rows.forEach(tx => {
     const tr = document.createElement("tr");
-    const catOptions = CATEGORIES.concat(["Split"]).map(c =>
-      `<option value="${c}" ${c === tx.category ? "selected" : ""}>${c}</option>`
+    const catOptions = CATEGORIES.map(c =>
+      `<option value="${esc(c)}" ${c === tx.category ? "selected" : ""}>${esc(c)}</option>`
     ).join("");
     const amountClass = tx.amount >= 0 ? "amount-positive" : "amount-negative";
     const isSplit = tx.category === "Split";
 
     tr.innerHTML = `
-      <td><input type="checkbox" class="row-checkbox" data-id="${tx.transactionid}"></td>
-      <td>${tx.date}</td>
-      <td>${tx.description}</td>
+      <td><input type="checkbox" class="row-checkbox" data-id="${esc(tx.transactionid)}"></td>
+      <td>${esc(tx.date)}</td>
+      <td>${esc(tx.description)}</td>
       <td class="${amountClass}">${tx.amount}</td>
-      <td>${tx.currency}</td>
-      <td>${tx.account}</td>
+      <td>${esc(tx.currency)}</td>
+      <td>${esc(tx.account)}</td>
       <td>
-      <span class="badge ${catClass(tx.category)}">${tx.category || "Uncategorized"}</span>
+      <span class="badge ${esc(catClass(tx.category))}">${esc(tx.category || "Uncategorized")}</span>
       ${tx.is_manual_category ? '<span style="font-size:11px; color:#6b7280; margin-left:4px;">(manual)</span>' : ''}
       </td>
       <td>
         ${isSplit
-          ? `<button class="danger undo-split-btn" data-id="${tx.transactionid}">Undo split</button>`
-          : `<button class="secondary split-btn" data-id="${tx.transactionid}" data-amount="${tx.amount}">Split</button>
-            <select class="cat-select" data-id="${tx.transactionid}" style="width:auto; display:inline-block; margin-left:6px;">${catOptions}</select>
+          ? `<button class="danger undo-split-btn" data-id="${esc(tx.transactionid)}">Undo split</button>`
+          : `<button class="secondary split-btn" data-id="${esc(tx.transactionid)}" data-amount="${tx.amount}">Split</button>
+            <select class="cat-select" data-id="${esc(tx.transactionid)}" style="width:auto; display:inline-block; margin-left:6px;">${catOptions}</select>
             ${tx.is_manual_category 
-              ? `<button class="secondary revert-btn" data-id="${tx.transactionid}" style="margin-left:6px;">Revert to auto</button>` 
+              ? `<button class="secondary revert-btn" data-id="${esc(tx.transactionid)}" style="margin-left:6px;">Revert to auto</button>` 
               : ''
             }`
         }

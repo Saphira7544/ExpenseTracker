@@ -11,8 +11,8 @@ function renderOverviewSummaryCards(summary) {
         </div>
         <div class="summary-card expenses">
             <div class="label">Expenses</div>
-            <div class="value">${fmtMoney(Math.abs(summary.expenses))}</div>
-            <div class="sub-value">Excludes investments</div>
+            <div class="value">${fmtMoney(-summary.expenses)}</div>
+            <div class="sub-value">Net of refunds &amp; repayments</div>
         </div>
         <div class="summary-card invested">
             <div class="label">Invested</div>
@@ -45,7 +45,7 @@ function renderOverviewIncomeExpensesChart(trend) {
                 },
                 {
                     label: 'Expenses',
-                    data: trend.map(r => Math.abs(r.expenses)),
+                    data: trend.map(r => -r.expenses),
                     backgroundColor: '#dc2626',
                     borderRadius: 6,
                 },
@@ -127,16 +127,15 @@ function populateYearSelect(years, selected) {
 }
 
 async function loadOverview(year) {
-    const url = year && year !== 'all'
-        ? `/api/analytics/overview?year=${encodeURIComponent(year)}`
-        : '/api/analytics/overview?year=all';
-    const res = await fetch(url);
+    const res = await fetch(`/api/analytics/overview?year=${encodeURIComponent(year || 'all')}`);
     if (!res.ok) {
         console.error('Failed to load overview dashboard');
         return;
     }
     const data = await res.json();
 
+    setupCurrencySelect(data, () => loadOverview(document.getElementById('year-select').value));
+    renderFxNotice(data);
     populateYearSelect(data.available_years, data.selected_year);
     renderOverviewSummaryCards(data.summary);
     renderOverviewIncomeExpensesChart(data.income_expenses_trend);

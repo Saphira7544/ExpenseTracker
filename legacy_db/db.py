@@ -1,22 +1,44 @@
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+from sqlalchemy import text
 from models.transaction import Transaction
-import os
-
-load_dotenv()
+from app.db.session import engine
 
 def get_engine():
-    url = (
-        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
-        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
-    )
-    return create_engine(url)
+    # Used to build a brand-new engine (and connection pool) on every call.
+    return engine
+
+def _migrate_transactions_key(conn):
+    """Move older databases from PRIMARY KEY (transactionId) to (user_id, transactionId).
+
+    The old key was global, so two users importing the same bank transaction
+    (or the same hash ID) collided and the second import was silently skipped.
+    Idempotent: does nothing once the new key exists.
+    """
+    already = conn.execute(text("""
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'transactions'::regclass AND contype = 'p'
+          AND pg_get_constraintdef(oid) = 'PRIMARY KEY (user_id, transactionid)'
+    """)).first()
+    if already:
+        return
+
+    orphans = conn.execute(text("SELECT COUNT(*) FROM transactions WHERE user_id IS NULL")).scalar()
+    if orphans:
+        raise RuntimeError(
+            f"{orphans} transactions have no user_id; assign them to a user "
+            "(UPDATE transactions SET user_id = <id> WHERE user_id IS NULL) before starting."
+        )
+
+    conn.execute(text("ALTER TABLE IF EXISTS transaction_splits DROP CONSTRAINT IF EXISTS transaction_splits_transactionid_fkey"))
+    conn.execute(text("ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_pkey"))
+    conn.execute(text("ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL"))
+    conn.execute(text("ALTER TABLE transactions ADD PRIMARY KEY (user_id, transactionId)"))
+
 
 def create_db():
     with get_engine().connect() as conn:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS transactions (
-                transactionId TEXT PRIMARY KEY,
+                transactionId TEXT NOT NULL,
                 date DATE NOT NULL,
                 transactionType TEXT NOT NULL,
                 description TEXT,
@@ -26,9 +48,14 @@ def create_db():
                 sourceFile TEXT NOT NULL,
                 category TEXT,
                 is_manual_category BOOLEAN DEFAULT FALSE,
-                user_id INTEGER REFERENCES users(id)
-            ) 
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                category_before_split TEXT,
+                PRIMARY KEY (user_id, transactionId)
+            )
         """))
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category_before_split TEXT"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions (user_id, date)"))
+        _migrate_transactions_key(conn)
         conn.commit()
     print("✅ Table ready")
 
@@ -37,12 +64,22 @@ def create_splits_table():
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS transaction_splits (
                 id SERIAL PRIMARY KEY,
-                transactionId TEXT NOT NULL REFERENCES transactions(transactionId),
+                transactionId TEXT NOT NULL,
                 category TEXT NOT NULL,
                 amount FLOAT NOT NULL,
                 note TEXT,
                 user_id INTEGER REFERENCES users(id)
             )
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transaction_splits_txn_fk') THEN
+                    ALTER TABLE transaction_splits
+                        ADD CONSTRAINT transaction_splits_txn_fk
+                        FOREIGN KEY (user_id, transactionId) REFERENCES transactions (user_id, transactionId);
+                END IF;
+            END $$;
         """))
         conn.commit()
     print("✅ Splits table ready")
@@ -84,7 +121,7 @@ def insert_transactions(transactions: list[Transaction]):
                 INSERT INTO transactions 
                 (transactionId, date, transactionType, description, amount, currency, account, sourceFile, category, user_id)
                 VALUES (:id, :date, :type, :desc, :amount, :currency, :account, :source, :category, :user_id)
-                ON CONFLICT (transactionId) DO NOTHING
+                ON CONFLICT (user_id, transactionId) DO NOTHING
             """), {
                 "id": t.transactionId,
                 "date": t.date.date() if t.date else None,

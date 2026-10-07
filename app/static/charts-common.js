@@ -19,8 +19,45 @@ function registerChart(key, chart) {
     return chart;
 }
 
+// Currency the analytics API returned values in (set from each response).
+let DISPLAY_CURRENCY = 'CHF';
+
 function fmtMoney(n) {
-    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n || 0);
+    return DISPLAY_CURRENCY + ' ' + new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n || 0);
+}
+
+/** Fill the currency toggle; changing it saves the preference and reloads the view. */
+function setupCurrencySelect(data, onChange) {
+    DISPLAY_CURRENCY = data.currency;
+    const select = document.getElementById('currency-select');
+    select.innerHTML = data.available_currencies
+        .map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    select.value = data.currency;
+    select.onchange = async () => {
+        await fetch('/api/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_currency: select.value }),
+        });
+        onChange();
+    };
+}
+
+/** Explain currency conversion, and warn when something couldn't be converted. */
+function renderFxNotice(data) {
+    const el = document.getElementById('fx-notice');
+    const parts = [];
+    if (data.converted_currencies.length) {
+        parts.push(`${esc(data.converted_currencies.join(', '))} amounts converted to ${esc(data.currency)} ` +
+                   `at the rate of each transaction's date (${esc(data.fx_source)}).`);
+    }
+    if (data.fx_missing.length) {
+        parts.push(`<strong>No exchange rate available for ${esc(data.fx_missing.join(', '))};` +
+                   ` those transactions are left out of the totals.</strong>`);
+    }
+    el.innerHTML = parts.join(' ');
+    el.classList.toggle('fx-warning', data.fx_missing.length > 0);
+    el.style.display = parts.length ? 'block' : 'none';
 }
 
 function fmtCHF(n) {

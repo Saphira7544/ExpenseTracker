@@ -308,3 +308,15 @@ tbody tr:hover {
     max-width: 100%;
     display: block;
 }
+
+/* ---------- Currency conversion note on Dashboard & Monthly ---------- */
+.fx-notice {
+    display: none;
+    margin-top: 10px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.fx-notice.fx-warning {
+    color: #b45309;
+}

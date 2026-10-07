@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+
+<div class="card">
+  <h1 style="font-size:16px;">Import exclusions</h1>
+  <p style="font-size:13px; color:#6b7280;">
+    Rows whose description contains one of these texts (case-insensitive) are skipped when you upload a
+    bank file, e.g. transfers between your own accounts or card top-ups. They only affect future uploads.
+  </p>
+  <div style="display:flex; gap:8px; margin-top:8px;">
+    <select id="newExclusionBank" style="width:auto;"></select>
+    <input type="text" id="newExclusionPattern" placeholder="text to skip (e.g. Payment to card)">
+    <button class="primary" id="addExclusionBtn">Add</button>
+  </div>
+  <p id="exclusionError" style="color:#dc2626; font-size:13px; margin-top:8px;"></p>
+  <table>
+    <thead><tr><th>Bank</th><th>Skip rows containing</th><th>Actions</th></tr></thead>
+    <tbody id="exclusionsBody"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h1 style="font-size:16px;">How categories count in the dashboards</h1>
+  <p style="font-size:13px; color:#6b7280;">
+    <strong>Income</strong> categories count as income. <strong>Investment</strong> categories count as
+    invested instead of spent. Every other category is spending, netted per category: money coming
+    back (a refund, or someone paying you back) reduces that category instead of counting as income.
+  </p>
+  <table>
+    <thead><tr><th>Category</th><th>Income</th><th>Investment</th></tr></thead>
+    <tbody id="categoryRolesBody"></tbody>
+  </table>
+  <div style="margin-top:12px;">
+    <button class="primary" id="saveRolesBtn">Save</button>
+    <span id="rolesStatus" style="font-size:13px; margin-left:8px;"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h1 style="font-size:16px;">Display currency</h1>
+  <p style="font-size:13px; color:#6b7280;">
+    Dashboard and Monthly totals are shown in this currency; other currencies are converted at the
+    ECB reference rate of each transaction's date. You can also switch it from those pages.
+  </p>
+  <select id="displayCurrency" style="width:auto;"></select>
+</div>
+
+<script>
+let SETTINGS = null;
+
+function bankLabel(bank) {
+  return bank ? bank.toUpperCase() : "All banks";
+}
+
+async function loadSettings() {
+  const res = await fetch("/api/settings");
+  SETTINGS = await res.json();
+  renderExclusions();
+  renderCategoryRoles();
+  renderCurrency();
+}
+
+function renderExclusions() {
+  const bankSel = document.getElementById("newExclusionBank");
+  const selectedBank = bankSel.value;  // keep the choice when re-rendering after an add
+  bankSel.innerHTML = [`<option value="">All banks</option>`]
+    .concat(SETTINGS.banks.map(b => `<option value="${esc(b)}">${esc(bankLabel(b))}</option>`))
+    .join("");
+  bankSel.value = selectedBank;
+
+  const tbody = document.getElementById("exclusionsBody");
+  tbody.innerHTML = SETTINGS.exclusions.map(x => `
+    <tr>
+      <td>${esc(bankLabel(x.bank))}</td>
+      <td>${esc(x.pattern)}</td>
+      <td><button class="danger delete-exclusion-btn" data-id="${esc(x.id)}">Delete</button></td>
+    </tr>
+  `).join("") || `<tr><td colspan="3" class="small-muted">No exclusions yet: every row of an uploaded file is imported.</td></tr>`;
+
+  document.querySelectorAll(".delete-exclusion-btn").forEach(btn => {
+    btn.onclick = async () => {
+      await fetch(`/api/settings/exclusions/${btn.dataset.id}`, { method: "DELETE" });
+      loadSettings();
+    };
+  });
+}
+
+document.getElementById("addExclusionBtn").onclick = async () => {
+  const pattern = document.getElementById("newExclusionPattern").value.trim();
+  const bank = document.getElementById("newExclusionBank").value || null;
+  const errorEl = document.getElementById("exclusionError");
+  errorEl.textContent = "";
+  if (!pattern) return;
+
+  const res = await fetch("/api/settings/exclusions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bank, pattern }),
+  });
+  if (!res.ok) {
+    errorEl.textContent = "Could not add exclusion.";
+    return;
+  }
+  document.getElementById("newExclusionPattern").value = "";
+  loadSettings();
+};
+
+function renderCategoryRoles() {
+  const tbody = document.getElementById("categoryRolesBody");
+  tbody.innerHTML = SETTINGS.categories.map(c => `
+    <tr>
+      <td>${esc(c)}</td>
+      <td><input type="checkbox" class="role-income" value="${esc(c)}" ${SETTINGS.income_categories.includes(c) ? "checked" : ""}></td>
+      <td><input type="checkbox" class="role-investment" value="${esc(c)}" ${SETTINGS.investment_categories.includes(c) ? "checked" : ""}></td>
+    </tr>
+  `).join("");
+
+  // A category is either income or investment, not both.
+  tbody.querySelectorAll("input[type=checkbox]").forEach(box => {
+    box.onchange = () => {
+      if (!box.checked) return;
+      const other = box.classList.contains("role-income") ? "role-investment" : "role-income";
+      tbody.querySelectorAll(`.${other}`).forEach(o => { if (o.value === box.value) o.checked = false; });
+    };
+  });
+}
+
+document.getElementById("saveRolesBtn").onclick = async () => {
+  const checked = cls => Array.from(document.querySelectorAll(`.${cls}:checked`)).map(b => b.value);
+  const status = document.getElementById("rolesStatus");
+  const res = await fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      income_categories: checked("role-income"),
+      investment_categories: checked("role-investment"),
+    }),
+  });
+  if (res.ok) {
+    status.style.color = "#16a34a";
+    status.textContent = "Saved.";
+  } else {
+    status.style.color = "#dc2626";
+    status.textContent = (await res.json()).detail || "Could not save.";
+  }
+};
+
+function renderCurrency() {
+  const sel = document.getElementById("displayCurrency");
+  sel.innerHTML = SETTINGS.available_currencies.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  sel.value = SETTINGS.display_currency;
+  sel.onchange = () => fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ display_currency: sel.value }),
+  });
+}
+
+loadSettings();
+</script>
+{% endblock %}

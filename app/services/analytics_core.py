@@ -62,7 +62,7 @@ def classify(lines: pd.DataFrame, income_categories, investment_categories) -> p
 
 
 def _r(x: float) -> float:
-    return round(float(x), 2)
+    return round(float(x), 2) + 0.0  # + 0.0 turns -0.0 into 0.0
 
 
 def _sum(lines: pd.DataFrame, kind: str) -> float:

@@ -13,6 +13,8 @@ ExpenseTracker is a personal finance web application for importing bank transact
 - Manual category changes, bulk category changes, and reverting a category to automatic categorization.
 - Transaction splitting with a remainder category.
 - User-specific categorization rules and rule re-run preview/apply operations.
+- Dashboard and Monthly analytics that use split parts, net refunds and repayments against their category, and show totals in CHF or EUR (daily ECB rates).
+- A Settings page for per-user import exclusions (per bank), income/investment categories, and display currency.
 - Net-worth accounts, lookup values, valuations, snapshots, liquidity classification, and CHF totals.
 - PostgreSQL persistence for users, transactions, rules, splits, and net-worth data.
 
@@ -273,7 +275,18 @@ LLM calls may incur usage costs. Set usage limits and monitor the associated Ope
 7. The application detects the bank format, parses the transactions, attaches them to the current user, applies rules, optionally sends remaining descriptions to OpenAI, and inserts the transactions into PostgreSQL.
 8. Review and correct categories from `/transactions`.
 
+Before the first upload, add your import exclusions on `/settings` (e.g. transfers between your own accounts, card top-ups); rows whose description contains one of them are skipped. The upload results show how many rows were excluded.
+
 Uploaded files (max 10 MB each) are saved under `UPLOAD_DIR/<user id>/<random id>/`, which defaults to `storage/uploads`. Treat uploaded bank files as sensitive personal data. In a production deployment, use persistent storage if uploaded files must survive redeployments.
+
+## How the dashboards calculate totals
+
+Dashboard (`/`) and Monthly (`/monthly`) work on *lines*: every normal transaction, plus each part of a split transaction in place of the original.
+
+- **Income**: lines in the income categories chosen on `/settings` (default: Salary).
+- **Invested**: money going into the investment categories (default: Investments). It counts as saved, not spent.
+- **Expenses**: every other category, netted per category. Money coming back (a refund, or someone paying you back) reduces that category instead of counting as income. For shared purchases: split the bill so the other person's share goes to e.g. `Transfers`, then categorize their repayment as `Transfers` too, and it cancels out.
+- **Currency**: all amounts are shown in the selected currency (CHF or EUR, switchable on each page). Other currencies are converted at the ECB reference rate of each transaction's date, fetched from [frankfurter.app](https://frankfurter.app) and cached in the `fx_rates` table. If no rate is available, the page says so and leaves those transactions out.
 
 ## Main API areas
 
@@ -316,7 +329,14 @@ All application data queries are scoped to the authenticated user's ID.
 
 ## Testing and development checks
 
-Before committing changes, run a syntax check across the project:
+Run the automated tests (no database, network or API keys needed):
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Also run a syntax check across the project:
 
 ```bash
 python -m compileall app categorizers legacy_db models parsers utils

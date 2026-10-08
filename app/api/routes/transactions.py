@@ -1,3 +1,5 @@
+import re
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from typing import Optional
@@ -6,8 +8,10 @@ from app.core.dependencies import get_current_user
 from app.services.transactions import (
     get_transactions, get_categories, get_accounts, update_transaction_category,
     get_transaction_by_id, save_splits, get_splits_for_transaction, undo_split,
-    count_transactions, bulk_update_category, revert_to_auto
+    count_transactions, bulk_update_category, revert_to_auto, get_currencies,
+    create_transaction, update_transaction, delete_transaction, split_edit_problem,
 )
+from app.services.settings import SUPPORTED_DISPLAY_CURRENCIES
 
 router = APIRouter()
 
@@ -36,6 +40,69 @@ class CategoryUpdate(BaseModel):
     category: str
     _check_category = field_validator("category")(_known_category)
 
+class TransactionPayload(BaseModel):
+    """All fields of the add/edit dialog. amount is signed: negative = money out."""
+    date: date
+    description: str
+    amount: float
+    currency: str
+    account: str
+    category: Optional[str] = None  # None = uncategorized
+
+    @field_validator("description", "account")
+    @classmethod
+    def _required_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be empty")
+        return value.strip()
+
+    @field_validator("amount")
+    @classmethod
+    def _non_zero(cls, value: float) -> float:
+        if abs(value) < 0.005:
+            raise ValueError("must not be zero")
+        return round(value, 2)
+
+    @field_validator("currency")
+    @classmethod
+    def _currency_code(cls, value: str) -> str:
+        value = value.strip().upper()
+        if not re.fullmatch(r"[A-Z]{3}", value):
+            raise ValueError("must be a 3-letter code such as CHF or EUR")
+        return value
+
+    @field_validator("category")
+    @classmethod
+    def _optional_category(cls, value: Optional[str]) -> Optional[str]:
+        return None if value in (None, "") else _known_category(value)
+
+
+@router.post("/api/transactions")
+def add_transaction(payload: TransactionPayload, user: dict = Depends(get_current_user)):
+    transaction_id = create_transaction(user["id"], payload.model_dump())
+    return get_transaction_by_id(user["id"], transaction_id)
+
+
+@router.put("/api/transactions/{transaction_id}")
+def edit_transaction(transaction_id: str, payload: TransactionPayload, user: dict = Depends(get_current_user)):
+    existing = get_transaction_by_id(user["id"], transaction_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    fields = payload.model_dump()
+    problem = split_edit_problem(existing, fields)
+    if problem:
+        raise HTTPException(status_code=409, detail=problem)
+    update_transaction(user["id"], existing, fields)
+    return get_transaction_by_id(user["id"], transaction_id)
+
+
+@router.delete("/api/transactions/{transaction_id}")
+def remove_transaction(transaction_id: str, user: dict = Depends(get_current_user)):
+    if not delete_transaction(user["id"], transaction_id):
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return {"status": "deleted"}
+
+
 @router.get("/api/transactions")
 def list_transactions(
     account: Optional[str] = None,
@@ -60,7 +127,9 @@ def list_transactions(
 def filters(user: dict = Depends(get_current_user)):
     return {
         "categories": get_categories(user["id"]),
-        "accounts": get_accounts(user["id"])
+        "accounts": get_accounts(user["id"]),
+        # For the add/edit dialog: currencies already used plus the display ones.
+        "currencies": sorted(set(get_currencies(user["id"])) | set(SUPPORTED_DISPLAY_CURRENCIES)),
     }
 
 @router.patch("/api/transactions/{transaction_id}")

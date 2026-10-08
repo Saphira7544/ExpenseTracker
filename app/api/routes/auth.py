@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Form, Request, Depends, HTTPException
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
+from app.core.templates import templates
 from app.core.config import settings
 from app.core.auth import create_session_token, password_problem
 from app.core.dependencies import require_admin
@@ -11,7 +11,7 @@ from app.services.users import (
 
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+
 
 # 10 failed logins per email (or per client IP) within 15 minutes locks that key out.
 login_limiter = FailureLimiter(max_failures=10, window_seconds=15 * 60)

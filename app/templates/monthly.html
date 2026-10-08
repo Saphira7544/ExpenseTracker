@@ -55,8 +55,8 @@
     </table>
 </div>
 
-<link rel="stylesheet" href="/static/monthly.css">
+<link rel="stylesheet" href="{{ static_url('monthly.css') }}">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script src="/static/charts-common.js"></script>
-<script src="/static/monthly.js"></script>
+<script src="{{ static_url('charts-common.js') }}"></script>
+<script src="{{ static_url('monthly.js') }}"></script>
 {% endblock %}

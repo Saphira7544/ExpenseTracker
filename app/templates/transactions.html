@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Transactions</h1>
+<link rel="stylesheet" href="{{ static_url('transactions.css') }}">
+
+<div class="page-header">
+  <h1>Transactions</h1>
+  <button class="primary" id="addTxBtn"><i class="fa-solid fa-plus"></i>Add transaction</button>
+</div>
 
 <div class="card">
   <div class="filters-grid">
@@ -65,21 +70,23 @@
 </div>
 
 <div class="card">
-  <table>
+  <div class="table-scroll">
+  <table class="tx-table">
     <thead>
       <tr>
-        <th><input type="checkbox" id="selectAllCheckbox"></th>
+        <th class="col-select"><input type="checkbox" id="selectAllCheckbox" aria-label="Select all on this page"></th>
+        <th class="col-edit"><span class="sr-only">Edit</span></th>
         <th>Date</th>
         <th>Description</th>
-        <th>Amount</th>
-        <th>Currency</th>
         <th>Account</th>
         <th>Category</th>
-        <th>Actions</th>
+        <th class="col-amount">Amount</th>
+        <th class="col-actions" style="text-align:right;">Actions</th>
       </tr>
     </thead>
     <tbody id="txBody"></tbody>
   </table>
+  </div>
   <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; flex-wrap:wrap; gap:12px;">
     <span id="pageInfo" style="font-size:13px; color:#6b7280;"></span>
     <div style="display:flex; gap:8px; align-items:center;">
@@ -95,6 +102,55 @@
       <button class="secondary" id="nextPageBtn">Next</button>
       <button class="secondary" id="lastPageBtn">Last</button>
     </div>
+  </div>
+</div>
+
+<!-- Add / edit transaction dialog -->
+<div class="modal-overlay" id="txModal">
+  <div class="modal-box tx-modal" role="dialog" aria-modal="true" aria-labelledby="txModalTitle">
+    <div class="tx-modal-header">
+      <h1 id="txModalTitle">Add transaction</h1>
+      <button type="button" class="icon-btn small" id="txCloseBtn" title="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="tx-modal-note" id="txModalNote"></p>
+
+    <form id="txForm" novalidate>
+      <div class="segmented" role="radiogroup" aria-label="Direction">
+        <label><input type="radio" name="txDirection" value="out" checked><span class="out">Money out</span></label>
+        <label><input type="radio" name="txDirection" value="in"><span class="in">Money in</span></label>
+      </div>
+
+      <div class="form-grid">
+        <label>Date
+          <input type="date" id="txDate" required>
+        </label>
+        <label>Amount
+          <input type="number" id="txAmount" step="0.01" min="0.01" placeholder="0.00" required>
+        </label>
+        <label>Currency
+          <select id="txCurrency"></select>
+        </label>
+        <label class="span-all">Description
+          <input type="text" id="txDescription" placeholder="e.g. Dinner at Zeughauskeller" required>
+        </label>
+        <label>Account
+          <input type="text" id="txAccount" list="accountOptions" placeholder="e.g. Cash" required>
+        </label>
+        <label class="span-2">Category
+          <select id="txCategory"></select>
+        </label>
+      </div>
+      <datalist id="accountOptions"></datalist>
+
+      <p class="form-error" id="txError" role="alert"></p>
+
+      <div class="tx-modal-footer">
+        <button type="button" class="danger" id="txDeleteBtn"><i class="fa-solid fa-trash"></i> Delete</button>
+        <div class="spacer"></div>
+        <button type="button" class="secondary" id="txCancelBtn">Cancel</button>
+        <button type="submit" class="primary" id="txSaveBtn">Save</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -130,24 +186,86 @@ let currentOffset = 0;
 let lastRowCount = 0;
 let totalCount = 0;
 let selectedIds = new Set();
+let rowsById = new Map();     // transactions on the current page, for the dialogs
+let filterData = { accounts: [], categories: [], currencies: [] };
 
 function catClass(cat) {
   return "cat-" + (cat || "Other").replace(/[\/\s]/g, "-");
 }
 
+function options(values, selected) {
+  return values.map(v => `<option value="${esc(v)}" ${v === selected ? "selected" : ""}>${esc(v)}</option>`).join("");
+}
+
+function formatDate(iso) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatAmount(amount) {
+  return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+}
+
+function initCategorySelects() {
+  document.getElementById("remainderCategory").innerHTML = options(CATEGORIES, "Other");
+  document.getElementById("bulkCategorySelect").innerHTML = options(CATEGORIES);
+  document.getElementById("txCategory").innerHTML =
+    `<option value="">Uncategorized (let rules decide)</option>` + options(CATEGORIES);
+}
+
+// Rebuilt after adding/editing, since a new account or category may appear.
 async function loadFilters() {
   const res = await fetch("/api/transactions/filters");
-  const data = await res.json();
+  filterData = await res.json();
+
   const accSel = document.getElementById("accountFilter");
-  data.accounts.forEach(a => accSel.innerHTML += `<option value="${esc(a)}">${esc(a)}</option>`);
   const catSel = document.getElementById("categoryFilter");
-  data.categories.forEach(c => catSel.innerHTML += `<option value="${esc(c)}">${esc(c)}</option>`);
+  const [acc, cat] = [accSel.value, catSel.value];
+  accSel.innerHTML = `<option value="">All</option>` + options(filterData.accounts, acc);
+  catSel.innerHTML = `<option value="">All</option>` + options(filterData.categories, cat);
 
-  const remSel = document.getElementById("remainderCategory");
-  CATEGORIES.forEach(c => remSel.innerHTML += `<option value="${c}" ${c === "Other" ? "selected" : ""}>${c}</option>`);
+  document.getElementById("accountOptions").innerHTML =
+    filterData.accounts.map(a => `<option value="${esc(a)}"></option>`).join("");
+}
 
-  const bulkSel = document.getElementById("bulkCategorySelect");
-  CATEGORIES.forEach(c => bulkSel.innerHTML += `<option value="${c}">${c}</option>`);
+function rowHtml(tx) {
+  const id = esc(tx.transactionid);
+  const isSplit = tx.category === "Split";
+  const isManualEntry = tx.sourcefile === "manual";
+  const amountClass = tx.amount >= 0 ? "amount-positive" : "amount-negative";
+
+  const categoryControl = isSplit
+    ? `<select disabled title="Undo the split to change its category"><option>Split</option></select>`
+    : `<select class="cat-select" data-id="${id}" aria-label="Category">
+         <option value="" ${tx.category ? "" : "selected"} disabled>Set category…</option>
+         ${options(CATEGORIES, tx.category)}
+       </select>`;
+
+  const splitAction = isSplit
+    ? `<button class="icon-btn small danger undo-split-btn" data-id="${id}" title="Undo split"><i class="fa-solid fa-arrow-rotate-left"></i></button>`
+    : `<button class="icon-btn small split-btn" data-id="${id}" title="Split across categories"><i class="fa-solid fa-scissors"></i></button>`;
+
+  const revertAction = tx.is_manual_category && !isSplit
+    ? `<button class="icon-btn small revert-btn" data-id="${id}" title="Let rules decide the category again"><i class="fa-solid fa-wand-magic-sparkles"></i></button>`
+    : `<span class="icon-slot"></span>`;
+
+  return `
+    <td class="col-select"><input type="checkbox" class="row-checkbox" data-id="${id}" aria-label="Select"></td>
+    <td class="col-edit">
+      <button class="icon-btn small edit-btn" data-id="${id}" title="Edit transaction"><i class="fa-solid fa-pen"></i></button>
+    </td>
+    <td class="col-date">${esc(formatDate(tx.date))}</td>
+    <td>
+      <div class="tx-desc" title="${esc(tx.description)}">${esc(tx.description)}${isManualEntry ? '<span class="tx-pill">Manual</span>' : ''}</div>
+    </td>
+    <td>${esc(tx.account)}</td>
+    <td>
+      <span class="badge ${esc(catClass(tx.category))}">${esc(tx.category || "Uncategorized")}</span>
+      ${tx.is_manual_category && !isSplit ? '<span class="manual-tag" title="Category set by hand; rules leave it alone">manual</span>' : ''}
+    </td>
+    <td class="col-amount ${amountClass}">${esc(formatAmount(tx.amount))}<span class="tx-currency">${esc(tx.currency)}</span></td>
+    <td class="col-actions"><div class="tx-actions">${categoryControl}${splitAction}${revertAction}</div></td>
+  `;
 }
 
 async function loadTransactions() {
@@ -190,67 +308,23 @@ async function loadTransactions() {
 
   const tbody = document.getElementById("txBody");
   tbody.innerHTML = "";
+  rowsById = new Map(rows.map(tx => [tx.transactionid, tx]));
 
   rows.forEach(tx => {
     const tr = document.createElement("tr");
-    const catOptions = CATEGORIES.map(c =>
-      `<option value="${esc(c)}" ${c === tx.category ? "selected" : ""}>${esc(c)}</option>`
-    ).join("");
-    const amountClass = tx.amount >= 0 ? "amount-positive" : "amount-negative";
-    const isSplit = tx.category === "Split";
-
-    tr.innerHTML = `
-      <td><input type="checkbox" class="row-checkbox" data-id="${esc(tx.transactionid)}"></td>
-      <td>${esc(tx.date)}</td>
-      <td>${esc(tx.description)}</td>
-      <td class="${amountClass}">${tx.amount}</td>
-      <td>${esc(tx.currency)}</td>
-      <td>${esc(tx.account)}</td>
-      <td>
-      <span class="badge ${esc(catClass(tx.category))}">${esc(tx.category || "Uncategorized")}</span>
-      ${tx.is_manual_category ? '<span style="font-size:11px; color:#6b7280; margin-left:4px;">(manual)</span>' : ''}
-      </td>
-      <td>
-        ${isSplit
-          ? `<button class="danger undo-split-btn" data-id="${esc(tx.transactionid)}">Undo split</button>`
-          : `<button class="secondary split-btn" data-id="${esc(tx.transactionid)}" data-amount="${tx.amount}">Split</button>
-            <select class="cat-select" data-id="${esc(tx.transactionid)}" style="width:auto; display:inline-block; margin-left:6px;">${catOptions}</select>
-            ${tx.is_manual_category 
-              ? `<button class="secondary revert-btn" data-id="${esc(tx.transactionid)}" style="margin-left:6px;">Revert to auto</button>` 
-              : ''
-            }`
-        }
-      </td>
-    `;
+    tr.innerHTML = rowHtml(tx);
     tbody.appendChild(tr);
   });
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No transactions match these filters.</td></tr>`;
+  }
 
   document.querySelectorAll(".cat-select").forEach(sel => {
     sel.onchange = async () => {
-      await fetch(`/api/transactions/${sel.dataset.id}`, {
+      await fetch(`/api/transactions/${encodeURIComponent(sel.dataset.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json"},
         body: JSON.stringify({ category: sel.value }),
-      });
-      loadTransactions();
-    };
-  });
-
-  document.querySelectorAll(".undo-split-btn").forEach(btn => {
-    btn.onclick = async () => {
-      await fetch(`/api/transactions/${btn.dataset.id}/split`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json"},
-      });
-      loadTransactions();
-    };
-  });
-
-  document.querySelectorAll(".revert-btn").forEach(btn => {
-    btn.onclick = async () => {
-      await fetch(`/api/transactions/${btn.dataset.id}/revert-auto`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json"},
       });
       loadTransactions();
     };
@@ -272,12 +346,186 @@ async function loadTransactions() {
   });
 }
 
+// Row buttons (delegated, so they work after every re-render)
+document.getElementById("txBody").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const id = btn.dataset.id;
+
+  if (btn.classList.contains("edit-btn")) {
+    openTxDialog(rowsById.get(id));
+  } else if (btn.classList.contains("split-btn")) {
+    openSplitDialog(rowsById.get(id));
+  } else if (btn.classList.contains("undo-split-btn")) {
+    await fetch(`/api/transactions/${encodeURIComponent(id)}/split`, { method: "DELETE" });
+    loadTransactions();
+  } else if (btn.classList.contains("revert-btn")) {
+    await fetch(`/api/transactions/${encodeURIComponent(id)}/revert-auto`, { method: "POST" });
+    loadTransactions();
+  }
+});
+
+// ---------- Add / edit dialog ----------
+
+let editingTx = null;   // null = adding a new transaction
+
+function setDirection(dir) {
+  document.querySelector(`input[name="txDirection"][value="${dir}"]`).checked = true;
+}
+
+function openTxDialog(tx = null) {
+  editingTx = tx;
+  const isSplit = tx && tx.category === "Split";
+  const form = document.getElementById("txForm");
+  form.reset();
+  form.querySelectorAll(".invalid").forEach(el => el.classList.remove("invalid"));
+  document.getElementById("txError").textContent = "";
+
+  const currencies = filterData.currencies.length ? filterData.currencies : ["CHF", "EUR"];
+  document.getElementById("txCurrency").innerHTML = options(currencies, tx ? tx.currency : currencies.includes("CHF") ? "CHF" : currencies[0]);
+
+  document.getElementById("txModalTitle").textContent = tx ? "Edit transaction" : "Add transaction";
+  document.getElementById("txDeleteBtn").style.display = tx ? "" : "none";
+
+  if (tx) {
+    setDirection(tx.amount >= 0 ? "in" : "out");
+    document.getElementById("txDate").value = tx.date;
+    document.getElementById("txAmount").value = Math.abs(tx.amount).toFixed(2);
+    document.getElementById("txDescription").value = tx.description || "";
+    document.getElementById("txAccount").value = tx.account || "";
+    document.getElementById("txCategory").value = isSplit ? "" : (tx.category || "");
+  } else {
+    setDirection("out");
+    const now = new Date();  // local date (toISOString would give the UTC date)
+    document.getElementById("txDate").value =
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  }
+
+  // A split's parts must keep adding up, so amount/direction/category are locked.
+  form.querySelectorAll('input[name="txDirection"]').forEach(r => r.disabled = isSplit);
+  document.getElementById("txAmount").disabled = isSplit;
+  document.getElementById("txCategory").disabled = isSplit;
+
+  let note = "";
+  if (isSplit) note = "This transaction is split. Undo the split to change its amount or category.";
+  else if (tx && tx.sourcefile === "manual") note = "Added manually.";
+  else if (tx) note = `Imported from ${tx.sourcefile}. Your edits are kept if you upload that file again.`;
+  document.getElementById("txModalNote").textContent = note;
+
+  document.getElementById("txModal").style.display = "flex";
+  document.getElementById(tx ? "txDescription" : "txAmount").focus();
+}
+
+function closeTxDialog() {
+  document.getElementById("txModal").style.display = "none";
+  editingTx = null;
+}
+
+function readTxForm() {
+  const fields = {
+    date: document.getElementById("txDate"),
+    amount: document.getElementById("txAmount"),
+    description: document.getElementById("txDescription"),
+    account: document.getElementById("txAccount"),
+  };
+  Object.values(fields).forEach(el => el.classList.remove("invalid"));
+
+  const missing = [];
+  if (!fields.date.value) missing.push(fields.date);
+  if (!(parseFloat(fields.amount.value) > 0)) missing.push(fields.amount);
+  if (!fields.description.value.trim()) missing.push(fields.description);
+  if (!fields.account.value.trim()) missing.push(fields.account);
+  if (missing.length) {
+    missing.forEach(el => el.classList.add("invalid"));
+    missing[0].focus();
+    return { error: "Please fill in the highlighted fields (amount must be greater than 0)." };
+  }
+
+  const direction = document.querySelector('input[name="txDirection"]:checked').value;
+  const magnitude = Math.round(parseFloat(fields.amount.value) * 100) / 100;
+  return {
+    payload: {
+      date: fields.date.value,
+      amount: direction === "out" ? -magnitude : magnitude,
+      currency: document.getElementById("txCurrency").value,
+      description: fields.description.value.trim(),
+      account: fields.account.value.trim(),
+      category: document.getElementById("txCategory").value || null,
+    },
+  };
+}
+
+function apiErrorMessage(body, status) {
+  if (Array.isArray(body.detail)) {
+    return body.detail.map(d => `${d.loc[d.loc.length - 1]}: ${d.msg}`).join("; ");
+  }
+  return body.detail || `Request failed (${status})`;
+}
+
+document.getElementById("txForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const { payload, error } = readTxForm();
+  const errorEl = document.getElementById("txError");
+  if (error) { errorEl.textContent = error; return; }
+
+  // A split's category isn't editable here; send what it has so validation passes.
+  if (editingTx && editingTx.category === "Split") payload.category = null;
+
+  const saveBtn = document.getElementById("txSaveBtn");
+  saveBtn.disabled = true;
+  try {
+    const res = editingTx
+      ? await fetch(`/api/transactions/${encodeURIComponent(editingTx.transactionid)}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+        })
+      : await fetch("/api/transactions", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+        });
+    if (!res.ok) {
+      errorEl.textContent = apiErrorMessage(await res.json().catch(() => ({})), res.status);
+      return;
+    }
+    closeTxDialog();
+    await loadFilters();
+    loadTransactions();
+  } finally {
+    saveBtn.disabled = false;
+  }
+};
+
+document.getElementById("txDeleteBtn").onclick = async () => {
+  if (!editingTx) return;
+  const comesBack = editingTx.sourcefile !== "manual"
+    ? `\n\nIt will be imported again if you upload ${editingTx.sourcefile} again.` : "";
+  if (!confirm(`Delete "${editingTx.description}"? This can't be undone.${comesBack}`)) return;
+
+  const res = await fetch(`/api/transactions/${encodeURIComponent(editingTx.transactionid)}`, { method: "DELETE" });
+  if (!res.ok) {
+    document.getElementById("txError").textContent = apiErrorMessage(await res.json().catch(() => ({})), res.status);
+    return;
+  }
+  closeTxDialog();
+  await loadFilters();
+  loadTransactions();
+};
+
+document.getElementById("addTxBtn").onclick = () => openTxDialog();
+document.getElementById("txCancelBtn").onclick = closeTxDialog;
+document.getElementById("txCloseBtn").onclick = closeTxDialog;
+document.getElementById("txModal").addEventListener("mousedown", (e) => {
+  if (e.target.id === "txModal") closeTxDialog();   // click on the backdrop
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.getElementById("txModal").style.display === "flex") closeTxDialog();
+});
+
+// ---------- Split dialog ----------
+
 function addSplitRow() {
   const row = document.createElement("div");
   row.className = "split-row";
-  const catOptions = CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join("");
   row.innerHTML = `
-    <select class="split-category">${catOptions}</select>
+    <select class="split-category">${options(CATEGORIES)}</select>
     <input type="number" class="split-amount" placeholder="Amount" step="0.01">
   `;
   document.getElementById("splitRows").appendChild(row);
@@ -290,18 +538,16 @@ function updateAllocatedDisplay() {
   document.getElementById("splitAllocated").textContent = sum.toFixed(2);
 }
 
-document.addEventListener("click", (e) => {
-  if (e.target.classList.contains("split-btn")) {
-    currentSplitId = e.target.dataset.id;
-    currentSplitAmount = Math.abs(parseFloat(e.target.dataset.amount));
-    document.getElementById("splitTotal").textContent = currentSplitAmount.toFixed(2);
-    document.getElementById("splitAllocated").textContent = "0.00";
-    document.getElementById("splitRows").innerHTML = "";
-    document.getElementById("splitError").textContent = "";
-    addSplitRow();
-    document.getElementById("splitModal").style.display = "flex";
-  }
-});
+function openSplitDialog(tx) {
+  currentSplitId = tx.transactionid;
+  currentSplitAmount = Math.abs(parseFloat(tx.amount));
+  document.getElementById("splitTotal").textContent = currentSplitAmount.toFixed(2);
+  document.getElementById("splitAllocated").textContent = "0.00";
+  document.getElementById("splitRows").innerHTML = "";
+  document.getElementById("splitError").textContent = "";
+  addSplitRow();
+  document.getElementById("splitModal").style.display = "flex";
+}
 
 document.getElementById("addSplitRow").onclick = addSplitRow;
 document.getElementById("cancelSplitBtn").onclick = () => {
@@ -323,7 +569,7 @@ document.getElementById("saveSplitBtn").onclick = async () => {
 
   const remainderCategory = document.getElementById("remainderCategory").value;
 
-  const res = await fetch(`/api/transactions/${currentSplitId}/split`, {
+  const res = await fetch(`/api/transactions/${encodeURIComponent(currentSplitId)}/split`, {
     method: "POST",
     headers: { "Content-Type": "application/json"},
     body: JSON.stringify({ splits, remainder_category: remainderCategory }),
@@ -334,9 +580,11 @@ document.getElementById("saveSplitBtn").onclick = async () => {
     loadTransactions();
   } else {
     const err = await res.json();
-    document.getElementById("splitError").textContent = err.detail;
+    document.getElementById("splitError").textContent = apiErrorMessage(err, res.status);
   }
 };
+
+// ---------- Bulk actions ----------
 
 function updateBulkBar() {
   const bar = document.getElementById("bulkActionBar");
@@ -383,9 +631,11 @@ document.getElementById("bulkApplyBtn").onclick = async () => {
     loadTransactions();
   } else {
     const err = await res.json();
-    alert("Bulk update failed: " + (err.detail || res.status));
+    alert("Bulk update failed: " + apiErrorMessage(err, res.status));
   }
 };
+
+// ---------- Filters & pagination ----------
 
 document.getElementById("filterBtn").onclick = () => {
   currentOffset = 0;
@@ -406,8 +656,9 @@ document.getElementById("resetFilterBtn").onclick = () => {
   loadTransactions();
 };
 
-loadCategories().then(() => {
-    loadFilters();
+loadCategories().then(async () => {
+    initCategorySelects();
+    await loadFilters();
     loadTransactions();
 });
 

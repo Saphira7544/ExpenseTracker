@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 import os
 from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.templating import Jinja2Templates
+from app.core.templates import templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from fastapi.exception_handlers import http_exception_handler
@@ -15,7 +15,7 @@ from app.api.routes import uploads, transactions, rules, auth, networth, analyti
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 
-templates = Jinja2Templates(directory="app/templates")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

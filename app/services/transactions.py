@@ -1,3 +1,4 @@
+import uuid
 from sqlalchemy import text
 from app.db.session import engine
 
@@ -74,6 +75,104 @@ def get_accounts(user_id: int):
         rows = conn.execute(text("SELECT DISTINCT account FROM transactions WHERE user_id = :user_id ORDER BY account"), 
                             {"user_id": user_id}).all()
     return [r[0] for r in rows]
+
+def get_currencies(user_id: int):
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT DISTINCT currency FROM transactions WHERE user_id = :user_id ORDER BY currency"),
+                            {"user_id": user_id}).all()
+    return [r[0] for r in rows]
+
+# Creating, editing and deleting transactions (the add/edit dialog)
+
+MANUAL_SOURCE = "manual"
+
+def _transaction_type(amount: float) -> str:
+    return "credit" if amount > 0 else "debit"
+
+def split_edit_problem(existing: dict, fields: dict) -> str | None:
+    """A split transaction's parts must keep adding up to its amount, so the
+    amount (and its sign) can't change until the split is undone."""
+    if existing["category"] == "Split" and abs(float(existing["amount"]) - fields["amount"]) > 0.005:
+        return "This transaction is split; undo the split before changing its amount"
+    return None
+
+def create_transaction(user_id: int, fields: dict) -> str:
+    transaction_id = f"manual-{uuid.uuid4().hex[:16]}"
+    with engine.connect() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO transactions
+                (transactionId, date, transactionType, description, amount, currency, account,
+                 sourceFile, category, is_manual_category, user_id)
+                VALUES (:id, :date, :type, :description, :amount, :currency, :account,
+                        :source, :category, :is_manual, :user_id)
+            """),
+            {
+                "id": transaction_id,
+                "date": fields["date"],
+                "type": _transaction_type(fields["amount"]),
+                "description": fields["description"],
+                "amount": fields["amount"],
+                "currency": fields["currency"],
+                "account": fields["account"],
+                "source": MANUAL_SOURCE,
+                "category": fields.get("category"),
+                # A category picked by hand must survive rule re-runs.
+                "is_manual": fields.get("category") is not None,
+                "user_id": user_id,
+            }
+        )
+        conn.commit()
+    return transaction_id
+
+def update_transaction(user_id: int, existing: dict, fields: dict) -> None:
+    """Edit any transaction (imported ones too). The ID is unchanged, so
+    re-uploading the original file won't duplicate or overwrite the edit."""
+    is_split = existing["category"] == "Split"
+    category = existing["category"] if is_split else fields.get("category")
+    if category is None:
+        is_manual = False                   # "Uncategorized": let rules decide again
+    elif category != existing["category"]:
+        is_manual = True                    # picked by hand: rule re-runs leave it alone
+    else:
+        is_manual = bool(existing["is_manual_category"])
+    with engine.connect() as conn:
+        conn.execute(
+            text("""
+                UPDATE transactions
+                SET date = :date, transactionType = :type, description = :description,
+                    amount = :amount, currency = :currency, account = :account,
+                    category = :category,
+                    is_manual_category = :is_manual
+                WHERE transactionId = :id AND user_id = :user_id
+            """),
+            {
+                "id": existing["transactionid"],
+                "user_id": user_id,
+                "date": fields["date"],
+                "type": _transaction_type(fields["amount"]),
+                "description": fields["description"],
+                "amount": fields["amount"],
+                "currency": fields["currency"],
+                "account": fields["account"],
+                "category": category,
+                "is_manual": is_manual,
+            }
+        )
+        conn.commit()
+
+def delete_transaction(user_id: int, transaction_id: str) -> bool:
+    with engine.connect() as conn:
+        conn.execute(
+            text("DELETE FROM transaction_splits WHERE transactionId = :id AND user_id = :user_id"),
+            {"id": transaction_id, "user_id": user_id}
+        )
+        result = conn.execute(
+            text("DELETE FROM transactions WHERE transactionId = :id AND user_id = :user_id"),
+            {"id": transaction_id, "user_id": user_id}
+        )
+        conn.commit()
+        return result.rowcount > 0
 
 # Split-related functions
 def get_transaction_by_id(user_id: int, transaction_id: str) -> dict | None:

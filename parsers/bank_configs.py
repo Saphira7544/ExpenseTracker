@@ -41,6 +41,26 @@ UBS_CONFIGS = {
 }
 
 # REVOLUT_CONFIGS = { ... }
+REVOLUT_CONFIGS = {
+    "debit": {
+        "bank": "cgd",
+        "file_type": "debit",
+        "header": ["Data mov. ", "Débito ", "Saldo disponível "],
+        "sep": ";",
+        "encoding": "latin1",
+        "date_col": "Data valor ",
+        "date_format": "%d-%m-%Y",
+        "desc_cols": ["Descrição"],  # Multi-col
+        "debit_col": "Débito ",
+        "credit_col": "Crédito",
+        "currency_col": None,
+        "fixed_currency": "EUR",
+        "id_col": None,
+        "account": "CGD Debit",
+        "drop_empty_amount": True,
+        "decimal_sep": ","
+    },
+} 
 
 CGD_CONFIGS = {
     "debit": {
@@ -66,4 +86,5 @@ CGD_CONFIGS = {
 ALL_BANK_CONFIGS = {
     "ubs": UBS_CONFIGS,
     "cgd": CGD_CONFIGS,
+    "rev": REVOLUT_CONFIGS,
 }

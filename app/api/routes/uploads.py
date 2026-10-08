@@ -1,10 +1,12 @@
 import os
 import uuid
+from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 from app.core.config import settings
 from app.core.dependencies import get_current_user
-from app.services.ingestion import process_uploaded_file
+from app.services.ingestion import stage_import, commit_import, discard_import
 
 router = APIRouter()
 
@@ -41,26 +43,31 @@ async def _save_upload(file: UploadFile, user_id: int) -> str:
     return save_path
 
 
-@router.post("/api/uploads")
-async def upload_files(
+class ConfirmImport(BaseModel):
+    # None = import every previewed row; otherwise only these (the ones left ticked).
+    transaction_ids: Optional[list[str]] = None
+
+
+@router.post("/api/uploads/preview")
+async def preview_upload(
     files: list[UploadFile] = File(...),
     user: dict = Depends(get_current_user),
 ):
-    results = []
+    """Parse and categorize the files without adding anything; returns what would be imported."""
+    saved = [(file.filename, await _save_upload(file, user["id"])) for file in files]
+    # Parsing, the DB and the LLM are all blocking; keep them off the event loop.
+    return await run_in_threadpool(stage_import, user["id"], saved)
 
-    for file in files:
-        save_path = await _save_upload(file, user["id"])
-        # Parsing, the DB and the LLM are all blocking; keep them off the event loop.
-        try:
-            summary = await run_in_threadpool(process_uploaded_file, save_path, user_id=user["id"])
-        except ValueError as exc:
-            if "Could not detect file format" not in str(exc):
-                raise
-            raise HTTPException(
-                status_code=400,
-                detail=f"{file.filename}: no bank format recognises this file. "
-                       f"Add or fix one on the Banks page.",
-            )
-        results.append({"filename": file.filename, **summary})
 
-    return {"uploaded": results}
+@router.post("/api/uploads/{import_id}/confirm")
+def confirm_upload(import_id: str, payload: ConfirmImport, user: dict = Depends(get_current_user)):
+    result = commit_import(user["id"], import_id, payload.transaction_ids)
+    if result is None:
+        raise HTTPException(status_code=404, detail="This upload preview has expired or was already imported. Upload the files again.")
+    return result
+
+
+@router.delete("/api/uploads/{import_id}")
+def cancel_upload(import_id: str, user: dict = Depends(get_current_user)):
+    discard_import(user["id"], import_id)
+    return {"status": "discarded"}

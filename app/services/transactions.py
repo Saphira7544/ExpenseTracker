@@ -2,10 +2,6 @@ import uuid
 from sqlalchemy import text
 from app.db.session import engine
 
-def attach_user_to_transactions(transactions, user_id: int) -> None:
-    for t in transactions:
-        t.user_id = user_id
-
 def _filter_clause(user_id, account=None, category=None, search=None, date_from=None, date_to=None,
                    amount_sign=None, min_amount=None, max_amount=None, split_status=None):
     """WHERE clause + params shared by the list and count queries."""
@@ -173,6 +169,23 @@ def delete_transaction(user_id: int, transaction_id: str) -> bool:
         )
         conn.commit()
         return result.rowcount > 0
+
+def bulk_delete_transactions(user_id: int, transaction_ids: list[str]) -> int:
+    """Delete several transactions (and their split parts) in one go.
+    Imported ones come back if their file is uploaded again."""
+    if not transaction_ids:
+        return 0
+    with engine.connect() as conn:
+        conn.execute(
+            text("DELETE FROM transaction_splits WHERE transactionId = ANY(:ids) AND user_id = :user_id"),
+            {"ids": transaction_ids, "user_id": user_id}
+        )
+        result = conn.execute(
+            text("DELETE FROM transactions WHERE transactionId = ANY(:ids) AND user_id = :user_id"),
+            {"ids": transaction_ids, "user_id": user_id}
+        )
+        conn.commit()
+        return result.rowcount
 
 # Split-related functions
 def get_transaction_by_id(user_id: int, transaction_id: str) -> dict | None:

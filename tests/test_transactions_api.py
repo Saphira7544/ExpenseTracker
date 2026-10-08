@@ -102,3 +102,14 @@ def test_split_edit_problem():
     assert split_edit_problem(split, {"amount": -100.0}) is None
     assert split_edit_problem(split, {"amount": 100.0}) is not None   # sign flip
     assert split_edit_problem({"category": "Groceries", "amount": -100.0}, {"amount": 5.0}) is None
+
+
+def test_bulk_delete(api, monkeypatch):
+    client, _ = api
+    seen = {}
+    monkeypatch.setattr(routes, "bulk_delete_transactions",
+                        lambda uid, ids: seen.update(uid=uid, ids=ids) or len(ids))
+    r = client.post("/api/transactions/bulk-delete", json={"transaction_ids": ["a", "b"]})
+    assert r.status_code == 200 and r.json() == {"deleted": 2}
+    assert seen == {"uid": 7, "ids": ["a", "b"]}
+    assert client.post("/api/transactions/bulk-delete", json={}).status_code == 422

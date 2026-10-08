@@ -68,6 +68,7 @@
   <select id="bulkCategorySelect" style="width:auto; display:inline-block;"></select>
   <button class="primary" id="bulkApplyBtn" style="margin-left:8px;">Apply to selected</button>
   <button class="secondary" id="bulkClearBtn" style="margin-left:8px;">Clear selection</button>
+  <button class="danger" id="bulkDeleteBtn" style="margin-left:8px;"><i class="fa-solid fa-trash"></i> Delete selected</button>
 </div>
 
 <div class="card">
@@ -615,6 +616,35 @@ document.getElementById("bulkClearBtn").onclick = () => {
   document.querySelectorAll(".row-checkbox").forEach(cb => cb.checked = false);
   document.getElementById("selectAllCheckbox").checked = false;
   updateBulkBar();
+};
+
+document.getElementById("bulkDeleteBtn").onclick = async () => {
+  const count = selectedIds.size;
+  if (count === 0) return;
+  const imported = Array.from(selectedIds).filter(id => (rowsById.get(id) || {}).sourcefile !== "manual").length;
+  const note = imported
+    ? `
+
+${imported} of them came from bank files and will come back if you upload those files again.`
+    : "";
+  if (!confirm(`Delete ${count} transaction${count === 1 ? "" : "s"}? This can't be undone.${note}`)) return;
+
+  const res = await fetch("/api/transactions/bulk-delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transaction_ids: Array.from(selectedIds) }),
+  });
+  if (!res.ok) {
+    alert("Delete failed: " + apiErrorMessage(await res.json().catch(() => ({})), res.status));
+    return;
+  }
+  selectedIds.clear();
+  // Stay on a page that still exists after removing rows.
+  if (currentOffset >= totalCount - count && currentOffset > 0) {
+    currentOffset = Math.max(0, currentOffset - pageSize);
+  }
+  await loadFilters();
+  loadTransactions();
 };
 
 document.getElementById("bulkApplyBtn").onclick = async () => {

@@ -51,6 +51,19 @@ def create_settings_tables():
             )
         """))
 
+        # Uploads waiting for review: parsed + categorized rows are kept here
+        # between "preview" and "import" so confirming inserts exactly what was
+        # shown (and the LLM isn't called twice). Stale ones are cleaned up.
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS staged_imports (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                files JSONB NOT NULL,
+                transactions JSONB NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """))
+
         # One-time data steps that already ran (see legacy_db/migrations.py).
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -112,8 +112,9 @@ def create_users_and_ownership():
         conn.commit()
     print("✅ Users table ready")
 
-def insert_transactions(transactions: list[Transaction]):
-    inserted = 0
+def insert_transactions(transactions: list[Transaction]) -> set[str]:
+    """Insert new transactions; returns the IDs actually inserted (existing ones are skipped)."""
+    inserted_ids = set()
     skipped = 0
     with get_engine().connect() as conn:
         for t in transactions:
@@ -135,8 +136,9 @@ def insert_transactions(transactions: list[Transaction]):
                 "user_id": t.user_id
             })
             if result.rowcount > 0:
-                inserted += 1
+                inserted_ids.add(t.transactionId)
             else:
                 skipped += 1
         conn.commit()
-    print(f"✅ Inserted: {inserted} | Skipped (duplicates): {skipped}")
+    print(f"✅ Inserted: {len(inserted_ids)} | Skipped (duplicates): {skipped}")
+    return inserted_ids

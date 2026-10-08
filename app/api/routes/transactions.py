@@ -10,6 +10,7 @@ from app.services.transactions import (
     get_transaction_by_id, save_splits, get_splits_for_transaction, undo_split,
     count_transactions, bulk_update_category, revert_to_auto, get_currencies,
     create_transaction, update_transaction, delete_transaction, split_edit_problem,
+    bulk_delete_transactions,
 )
 from app.services.settings import SUPPORTED_DISPLAY_CURRENCIES
 
@@ -35,6 +36,13 @@ def bulk_category_update(
 ):
     updated = bulk_update_category(user["id"], payload.transaction_ids, payload.category)
     return {"updated": updated}
+
+class BulkDelete(BaseModel):
+    transaction_ids: list[str]
+
+@router.post("/api/transactions/bulk-delete")
+def bulk_delete(payload: BulkDelete, user: dict = Depends(get_current_user)):
+    return {"deleted": bulk_delete_transactions(user["id"], payload.transaction_ids)}
 
 class CategoryUpdate(BaseModel):
     category: str

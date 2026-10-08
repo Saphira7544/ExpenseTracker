@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+<link rel="stylesheet" href="{{ static_url('dialogs.css') }}">
+<link rel="stylesheet" href="{{ static_url('upload.css') }}">
 <h1>Upload Bank Statement</h1>
 
 <div class="card">
@@ -10,17 +12,73 @@
 
   <div class="file-list" id="fileList"></div>
 
-  <button class="primary" id="uploadBtn" disabled>Upload</button>
+  <button class="primary" id="uploadBtn" disabled>Review upload</button>
+  <span class="small-muted" id="uploadHint" style="margin-left:8px;">You'll see the rows before anything is added.</span>
 </div>
 
 <div class="card" id="resultsCard" style="display:none">
   <h1>Results</h1>
-  <table>
-    <thead>
-      <tr><th>File</th><th>Parsed</th><th>Excluded</th><th>Rule matched</th><th>LLM matched</th></tr>
-    </thead>
-    <tbody id="resultsBody"></tbody>
-  </table>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>File</th><th class="num">Parsed</th><th class="num">Excluded</th><th class="num">Already imported</th>
+          <th class="num">Left out</th><th class="num">Added</th><th class="num">Rule matched</th><th class="num">AI matched</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Review dialog: what will be imported -->
+<div class="modal-overlay" id="reviewModal">
+  <div class="modal-box dialog-box review-dialog" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+    <div class="dialog-header">
+      <h1 id="reviewTitle">Review import</h1>
+      <button type="button" class="icon-btn small" id="reviewCloseBtn" title="Cancel import"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="dialog-note">Nothing has been added yet. Untick any rows you don't want, then import.</p>
+
+    <div class="table-scroll">
+      <table class="review-files">
+        <thead>
+          <tr>
+            <th>File</th><th>Format</th><th class="num">Parsed</th><th class="num">Excluded</th>
+            <th class="num">Already imported</th><th class="num">New</th>
+          </tr>
+        </thead>
+        <tbody id="reviewFilesBody"></tbody>
+      </table>
+    </div>
+
+    <div id="reviewRowsWrap">
+      <div class="review-toolbar">
+        <strong id="reviewRowsTitle"></strong>
+        <span class="small-muted">Categories: <span class="src-tag rule">rule</span> from your rules, <span class="src-tag llm">AI</span> suggested.</span>
+      </div>
+      <div class="review-rows">
+        <table class="review-table">
+          <thead>
+            <tr>
+              <th class="col-select"><input type="checkbox" id="reviewAll" checked aria-label="Select all"></th>
+              <th>Date</th><th>Description</th><th>Account</th><th>Category</th><th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody id="reviewRowsBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <p class="empty-state" id="reviewNothing" style="display:none;">Nothing new to import: every row was already imported or excluded.</p>
+
+    <p class="form-error" id="reviewError" role="alert"></p>
+    <div class="dialog-footer">
+      <span class="small-muted" id="reviewSelectedInfo"></span>
+      <div class="spacer"></div>
+      <button type="button" class="secondary" id="reviewCancelBtn">Cancel</button>
+      <button type="button" class="primary" id="reviewImportBtn">Import</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -31,8 +89,10 @@ const fileList = document.getElementById("fileList");
 const uploadBtn = document.getElementById("uploadBtn");
 const resultsCard = document.getElementById("resultsCard");
 const resultsBody = document.getElementById("resultsBody");
+const $ = id => document.getElementById(id);
 
 let selectedFiles = [];
+let preview = null;          // response of /api/uploads/preview
 
 dropzone.onclick = () => fileInput.click();
 
@@ -52,59 +112,189 @@ function handleFiles(files) {
   uploadBtn.disabled = selectedFiles.length === 0;
 }
 
-function renderFileList() {
-  fileList.innerHTML = "";
-  selectedFiles.forEach(f => {
-    const div = document.createElement("div");
-    div.className = "file-item";
-    div.innerHTML = `<span>${esc(f.name)}</span><span class="status-pending" id="status-${esc(f.name)}">Pending</span>`;
-    fileList.appendChild(div);
-  });
+function setFileStatus(name, text, cls) {
+  const el = Array.from(document.querySelectorAll("#fileList [data-name]")).find(e => e.dataset.name === name);
+  if (el) { el.textContent = text; el.className = cls; }
 }
+
+function renderFileList() {
+  fileList.innerHTML = selectedFiles.map(f => `
+    <div class="file-item"><span>${esc(f.name)}</span><span class="status-pending" data-name="${esc(f.name)}">Pending</span></div>
+  `).join("");
+}
+
+function formatAmount(amount) {
+  return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+}
+
+function formatDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+async function errorText(res) {
+  const body = await res.json().catch(() => ({}));
+  return typeof body.detail === "string" ? body.detail : `Request failed (${res.status})`;
+}
+
+// ---------- Step 1: preview ----------
 
 uploadBtn.onclick = async () => {
   uploadBtn.disabled = true;
-  uploadBtn.textContent = "Uploading...";
+  uploadBtn.textContent = "Preparing preview…";
+  selectedFiles.forEach(f => setFileStatus(f.name, "Reading…", "status-pending"));
 
   const formData = new FormData();
   selectedFiles.forEach(f => formData.append("files", f));
 
   try {
-    const res = await fetch("/api/uploads", {
-      method: "POST",
-      body: formData,
-    });
-
+    const res = await fetch("/api/uploads/preview", { method: "POST", body: formData });
     if (!res.ok) {
-      const err = await res.json();
-      selectedFiles.forEach(f => {
-        document.getElementById(`status-${f.name}`).textContent = "Error";
-        document.getElementById(`status-${f.name}`).className = "status-error";
-      });
-      alert("Upload failed: " + (err.detail || res.status));
+      const msg = await errorText(res);
+      selectedFiles.forEach(f => setFileStatus(f.name, "Error", "status-error"));
+      alert("Upload failed: " + msg);
       return;
     }
-
-    const data = await res.json();
-    resultsCard.style.display = "block";
-    resultsBody.innerHTML = "";
-
-    data.uploaded.forEach(r => {
-      document.getElementById(`status-${r.filename}`).textContent = "Uploaded";
-      document.getElementById(`status-${r.filename}`).className = "status-success";
-
-      const row = document.createElement("tr");
-      row.innerHTML = `<td>${esc(r.filename)}</td><td>${r.parsed}</td><td>${r.excluded}</td><td>${r.rule_matched}</td><td>${r.llm_matched}</td>`;
-      resultsBody.appendChild(row);
-    });
+    preview = await res.json();
+    preview.files.forEach(f => f.error
+      ? setFileStatus(f.filename, "Not recognised", "status-error")
+      : setFileStatus(f.filename, "Ready to review", "status-pending"));
+    openReview();
   } catch (e) {
     alert("Network error: " + e.message);
   } finally {
-    uploadBtn.textContent = "Upload";
-    uploadBtn.disabled = false;
-    selectedFiles = [];
-    fileInput.value = "";
+    uploadBtn.textContent = "Review upload";
+    uploadBtn.disabled = selectedFiles.length === 0;
   }
 };
+
+// ---------- Step 2: review dialog ----------
+
+function openReview() {
+  $("reviewError").textContent = "";
+
+  $("reviewFilesBody").innerHTML = preview.files.map(f => f.error ? `
+      <tr><td>${esc(f.filename)}</td><td colspan="5" class="review-error">${esc(f.error)}</td></tr>` : `
+      <tr>
+        <td>${esc(f.filename)}</td><td>${esc(f.format)}</td>
+        <td class="num">${f.parsed}</td><td class="num">${f.excluded}</td>
+        <td class="num">${f.already_imported}${f.duplicate_in_upload ? ` <span class="small-muted" title="Also in another file of this upload">(+${f.duplicate_in_upload} repeated)</span>` : ""}</td>
+        <td class="num"><strong>${f.new}</strong></td>
+      </tr>`).join("");
+
+  const rows = preview.transactions;
+  const multipleFiles = preview.files.length > 1;
+  $("reviewRowsWrap").style.display = rows.length ? "" : "none";
+  $("reviewNothing").style.display = rows.length ? "none" : "";
+  $("reviewRowsTitle").textContent = `${rows.length} new transaction${rows.length === 1 ? "" : "s"}`;
+
+  $("reviewRowsBody").innerHTML = rows.map(r => {
+    const tag = r.category_source === "llm" ? '<span class="src-tag llm">AI</span>'
+              : r.category_source === "rule" ? '<span class="src-tag rule">rule</span>' : "";
+    return `
+      <tr>
+        <td class="col-select"><input type="checkbox" class="review-check" data-id="${esc(r.id)}" checked aria-label="Import this row"></td>
+        <td class="nowrap">${esc(formatDate(r.date))}</td>
+        <td><div class="review-desc" title="${esc(r.description)}">${esc(r.description)}</div>
+            ${multipleFiles ? `<div class="small-muted">${esc(preview.files[r.file].filename)}</div>` : ""}</td>
+        <td class="nowrap">${esc(r.account)}</td>
+        <td class="nowrap">${esc(r.category || "Uncategorized")} ${tag}</td>
+        <td class="num nowrap ${r.amount >= 0 ? "amount-positive" : "amount-negative"}">${esc(formatAmount(r.amount))} <span class="small-muted">${esc(r.currency)}</span></td>
+      </tr>`;
+  }).join("");
+
+  $("reviewAll").checked = true;
+  updateSelectedInfo();
+  $("reviewModal").style.display = "flex";
+  $("reviewImportBtn").focus();
+}
+
+function checkedIds() {
+  return Array.from(document.querySelectorAll(".review-check:checked")).map(cb => cb.dataset.id);
+}
+
+function updateSelectedInfo() {
+  const total = preview.transactions.length;
+  const n = checkedIds().length;
+  $("reviewSelectedInfo").textContent = total ? `${n} of ${total} selected` : "";
+  $("reviewImportBtn").textContent = total ? `Import ${n} transaction${n === 1 ? "" : "s"}` : "Close";
+  $("reviewImportBtn").disabled = total > 0 && n === 0;
+  $("reviewAll").checked = n === total;
+  $("reviewAll").indeterminate = n > 0 && n < total;
+}
+
+$("reviewRowsBody").addEventListener("change", e => {
+  if (e.target.classList.contains("review-check")) updateSelectedInfo();
+});
+$("reviewAll").onchange = () => {
+  document.querySelectorAll(".review-check").forEach(cb => cb.checked = $("reviewAll").checked);
+  updateSelectedInfo();
+};
+
+async function cancelReview() {
+  $("reviewModal").style.display = "none";
+  if (preview) {
+    fetch(`/api/uploads/${preview.import_id}`, { method: "DELETE" });   // discard the staged rows
+    preview.files.forEach(f => !f.error && setFileStatus(f.filename, "Cancelled", "status-pending"));
+    preview = null;
+  }
+}
+
+$("reviewCancelBtn").onclick = cancelReview;
+$("reviewCloseBtn").onclick = cancelReview;
+$("reviewModal").addEventListener("mousedown", e => { if (e.target.id === "reviewModal") cancelReview(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("reviewModal").style.display === "flex") cancelReview();
+});
+
+// ---------- Step 3: import ----------
+
+$("reviewImportBtn").onclick = async () => {
+  if (!preview.transactions.length) {           // nothing new: "Close"
+    const files = preview.files.map(f => f.error ? f : { ...f, added: 0, not_selected: 0, rule_matched: 0, llm_matched: 0 });
+    await cancelReview();
+    showResults(files);
+    return;
+  }
+  const btn = $("reviewImportBtn");
+  btn.disabled = true;
+  btn.textContent = "Importing…";
+  try {
+    const res = await fetch(`/api/uploads/${preview.import_id}/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transaction_ids: checkedIds() }),
+    });
+    if (!res.ok) {
+      $("reviewError").textContent = await errorText(res);
+      updateSelectedInfo();
+      return;
+    }
+    const data = await res.json();
+    $("reviewModal").style.display = "none";
+    preview = null;
+    showResults(data.files);
+    selectedFiles = [];
+    fileInput.value = "";
+  } catch (e) {
+    $("reviewError").textContent = "Network error: " + e.message;
+    updateSelectedInfo();
+  }
+};
+
+function showResults(files) {
+  resultsCard.style.display = "block";
+  resultsBody.innerHTML = files.map(f => {
+    if (f.error) return `<tr><td>${esc(f.filename)}</td><td colspan="7" class="review-error">${esc(f.error)}</td></tr>`;
+    setFileStatus(f.filename, f.added ? "Imported" : "Nothing new", f.added ? "status-success" : "status-pending");
+    return `
+      <tr>
+        <td>${esc(f.filename)}</td><td class="num">${f.parsed}</td><td class="num">${f.excluded}</td>
+        <td class="num">${f.already_imported + (f.duplicate_in_upload || 0)}</td>
+        <td class="num">${f.not_selected}</td><td class="num"><strong>${f.added}</strong></td>
+        <td class="num">${f.rule_matched}</td><td class="num">${f.llm_matched}</td>
+      </tr>`;
+  }).join("");
+}
 </script>
 {% endblock %}

@@ -7,6 +7,9 @@ currency, plus (after conversion) `value` in the display currency and a
 
 - income      -> categories the user marked as income (default: Salary)
 - investment  -> categories the user marked as investments (default: Investments)
+- ignored     -> categories left out of every total (default: Internal, i.e. moving
+                 money between your own accounts or currencies, which is neither
+                 earned, spent nor invested)
 - spending    -> everything else
 
 Spending is *netted per category*: a positive amount in a spending category
@@ -20,7 +23,7 @@ import pandas as pd
 
 SPLIT = "Split"
 UNCATEGORIZED = "Uncategorized"
-INCOME, INVESTMENT, SPENDING = "income", "investment", "spending"
+INCOME, INVESTMENT, SPENDING, IGNORED = "income", "investment", "spending", "ignored"
 
 TX_COLUMNS = ["transaction_id", "date", "description", "category", "amount", "currency"]
 SPLIT_COLUMNS = ["transaction_id", "category", "amount"]
@@ -51,12 +54,15 @@ def build_lines(transactions: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFram
     return lines
 
 
-def classify(lines: pd.DataFrame, income_categories, investment_categories) -> pd.DataFrame:
+def classify(lines: pd.DataFrame, income_categories, investment_categories, ignored_categories=()) -> pd.DataFrame:
     lines = lines.copy()
     category = lines["category"]
-    lines["kind"] = np.where(
-        category.isin(list(income_categories)), INCOME,
-        np.where(category.isin(list(investment_categories)), INVESTMENT, SPENDING),
+    lines["kind"] = np.select(
+        [category.isin(list(ignored_categories)),
+         category.isin(list(income_categories)),
+         category.isin(list(investment_categories))],
+        [IGNORED, INCOME, INVESTMENT],
+        default=SPENDING,
     )
     return lines
 

@@ -55,6 +55,8 @@ def _classify_batch(batch: list[str]) -> list[str | None]:
     prompt = (
         "You are a financial transaction categorizer.\n"
         f"Categorize each transaction into one of these categories: {', '.join(CATEGORIES)}.\n"
+        "Use Internal for moving money between the person's own accounts or currencies "
+        "(e.g. top-ups, currency exchanges), not for payments to other people.\n"
         "Return one result per transaction, using its number as the index.\n\n"
         f"Transactions:\n{prompt_lines}"
     )

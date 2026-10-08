@@ -1,0 +1,137 @@
+/* ---------- Net Worth pages (Net Worth, Config, Analytics) ---------- */
+
+:root {
+  --liquid: #0ea5e9;     /* water: money you can use now */
+  --illiquid: #a7770a;   /* ochre: locked away (pension, PPR...) */
+  --gain: #16a34a;
+  --loss: #dc2626;
+}
+
+.page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.page-actions button i { margin-right: 6px; }
+.page-subtitle { margin: 4px 0 0; font-size: 13px; color: #64748b; }
+
+/* Headline tiles */
+.nw-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.nw-tiles .summary-card { min-width: 0; }
+.summary-card.total::before { background: linear-gradient(90deg, #4f8ef7, #6366f1); }
+.summary-card.liquid::before { background: var(--liquid); }
+.summary-card.illiquid::before { background: var(--illiquid); }
+.summary-card.live::before { background: #94a3b8; }
+.summary-card .value.big { font-size: 28px; }
+.change { font-weight: 700; }
+.change.up { color: var(--gain); }
+.change.down { color: var(--loss); }
+.share-bar { display: flex; height: 6px; border-radius: 4px; overflow: hidden; margin-top: 8px; background: #e2e8f0; }
+.share-bar span { display: block; height: 100%; }
+.tile-action { margin-top: 8px; }
+.tile-action button { font-size: 12px; padding: 5px 10px; }
+
+/* Tabs */
+.nw-tabs { display: flex; gap: 4px; border-bottom: 1px solid #e7eaf3; margin-bottom: 14px; }
+.nw-tab {
+  background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 10px 16px; font: inherit; font-size: 14px; font-weight: 600; color: #94a3b8; cursor: pointer;
+}
+.nw-tab:hover { color: #0f172a; }
+.nw-tab.active { color: #4f8ef7; border-bottom-color: #4f8ef7; }
+.nw-tab .count { margin-left: 6px; padding: 1px 7px; border-radius: 10px; background: #f1f5f9; color: #64748b; font-size: 11px; }
+.nw-panel { display: none; }
+.nw-panel.active { display: block; }
+
+.panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.panel-toolbar .checkbox-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #475569; }
+.panel-toolbar .checkbox-inline input { width: auto; }
+.panel-toolbar select { width: auto; min-width: 220px; }
+
+/* Tables */
+.nw-table td { vertical-align: middle; }
+.nw-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nw-table .col-actions { width: 1%; white-space: nowrap; }
+.nw-table tbody tr:hover { background: #f8fafc; }
+.nw-table tr.inactive td { opacity: 0.5; }
+.group-row td {
+  background: #f8fafc; font-weight: 700; color: #0f172a; font-size: 13px;
+  border-top: 1px solid #e2e8f0;
+}
+.group-row .muted { font-weight: 500; color: #94a3b8; margin-left: 6px; }
+.account-name { font-weight: 600; color: #0f172a; }
+.ticker { margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: #eef2ff; color: #4338ca; font-size: 11px; font-weight: 700; font-family: ui-monospace, Consolas, monospace; }
+.as-of { display: block; font-size: 11px; color: #94a3b8; font-weight: 500; }
+.as-of.stale { color: #b45309; }
+.muted-cell { color: #94a3b8; }
+
+.pill { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+.pill.liquid { background: #e0f2fe; color: #0369a1; }
+.pill.illiquid { background: #fef3c7; color: #92400e; }
+.pill.neutral { background: #f1f5f9; color: #475569; }
+
+.perf { display: block; font-size: 11px; font-weight: 500; color: #94a3b8; }
+
+/* Valuation dialog extras */
+.calc-summary { font-size: 12px; color: #475569; background: #f8fafc; border-radius: 8px; padding: 8px 10px; margin-top: 10px; min-height: 1em; }
+.calc-summary:empty { display: none; }
+.inline-link { font-size: 12px; font-weight: 600; color: #4f8ef7; background: none; border: none; padding: 0; cursor: pointer; }
+.inline-link:hover { text-decoration: underline; }
+.form-section-title { margin: 16px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #94a3b8; }
+.field-hint { font-weight: 400; color: #94a3b8; font-size: 11px; }
+.form-grid input[readonly] { background: #f8fafc; color: #0f172a; font-weight: 700; }
+.checkbox-label { flex-direction: row !important; align-items: center; gap: 8px !important; font-weight: 500 !important; }
+.checkbox-label input { width: auto; }
+
+/* ---------- Config page ---------- */
+.config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.config-card h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 2px; font-size: 16px; }
+.config-card h2 i { color: #94a3b8; font-size: 14px; }
+.config-card .card-hint { margin: 0 0 12px; font-size: 12px; color: #94a3b8; }
+.lookup-list { list-style: none; margin: 0; padding: 0; border: 1px solid #eef0f5; border-radius: 10px; }
+.lookup-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #eef0f5; }
+.lookup-item:last-child { border-bottom: none; }
+.lookup-item.inactive .lookup-name { color: #94a3b8; text-decoration: line-through; }
+.lookup-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lookup-item input.rename { flex: 1; padding: 5px 8px; font-size: 14px; }
+.usage { font-size: 11px; color: #94a3b8; white-space: nowrap; }
+.lookup-empty { padding: 14px; text-align: center; color: #94a3b8; font-size: 13px; }
+.order-btns { display: flex; flex-direction: column; }
+.order-btns button { border: none; background: none; color: #94a3b8; cursor: pointer; padding: 0 4px; line-height: 1; font-size: 11px; }
+.order-btns button:hover:not(:disabled) { color: #0f172a; }
+.order-btns button:disabled { opacity: 0.3; cursor: default; }
+.add-row { display: flex; gap: 8px; margin-top: 10px; }
+.add-row input { flex: 1; }
+.card-error { color: #dc2626; font-size: 12px; margin: 8px 0 0; min-height: 1em; }
+
+/* Toggle switch (active / inactive) */
+.switch { position: relative; display: inline-block; width: 32px; height: 18px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch span { position: absolute; inset: 0; background: #cbd5e1; border-radius: 18px; transition: background 0.15s; cursor: pointer; }
+.switch span::before { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; background: #fff; border-radius: 50%; transition: transform 0.15s; }
+.switch input:checked + span { background: #16a34a; }
+.switch input:checked + span::before { transform: translateX(14px); }
+.switch input:focus-visible + span { outline: 2px solid #4f8ef7; outline-offset: 2px; }
+
+/* ---------- Analytics page ---------- */
+.nw-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.nw-charts .wide { grid-column: 1 / -1; }
+.nw-charts .card h2 { font-size: 15px; margin: 0 0 4px; }
+.nw-charts .card .card-hint { margin: 0 0 10px; font-size: 12px; color: #94a3b8; }
+.chart-box { position: relative; height: 280px; }
+.chart-box.tall { height: 320px; }
+.alloc-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: center; }
+.alloc-layout .chart-box { height: 220px; }
+.alloc-table { margin-top: 0; }
+.alloc-table td, .alloc-table th { padding: 7px 8px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px; vertical-align: middle; }
+.bar-cell { width: 35%; }
+.bar-track { height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; }
+.empty-chart { display: flex; align-items: center; justify-content: center; height: 100%; color: #94a3b8; font-size: 13px; text-align: center; }
+
+@media (max-width: 1100px) {
+  .nw-charts { grid-template-columns: minmax(0, 1fr); }
+  .alloc-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+.nowrap { white-space: nowrap; }
+
+/* Disabled icon buttons (e.g. delete for a value still in use) read as unavailable. */
+.icon-btn:disabled, .icon-btn.danger:disabled { opacity: 0.3; cursor: not-allowed; background: #f1f5f9; color: #94a3b8; }

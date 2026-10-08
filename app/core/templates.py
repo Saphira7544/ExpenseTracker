@@ -1,5 +1,6 @@
 import os
 from fastapi.templating import Jinja2Templates
+from app.core.categories import CATEGORY_COLORS
 
 STATIC_DIR = "app/static"
 
@@ -21,3 +22,4 @@ def static_url(path: str) -> str:
 # Shared by every router that renders pages, so they all get static_url().
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["static_url"] = static_url
+templates.env.globals["category_colors"] = CATEGORY_COLORS

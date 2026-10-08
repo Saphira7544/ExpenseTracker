@@ -89,7 +89,7 @@ async def networth_config_page(request: Request, user: dict = Depends(get_curren
     return templates.TemplateResponse(
         request,
         "networth_config.html",
-        {"active_page": "networth", "user": user}
+        {"active_page": "networth_config", "user": user}
     )
 
 @app.get("/networth/analytics")

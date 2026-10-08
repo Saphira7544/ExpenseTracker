@@ -33,3 +33,38 @@
     height: 12px;
     border-radius: 3px;
 }
+
+/* Year dropdown + month buttons */
+.month-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.month-btn {
+    min-width: 48px;
+    padding: 7px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.month-btn:hover:not(:disabled):not(.selected) { background: #f1f5f9; }
+.month-btn:focus-visible { outline: 2px solid #4f8ef7; outline-offset: 2px; }
+
+.month-btn.selected {
+    background: #4f8ef7;
+    border-color: #4f8ef7;
+    color: #fff;
+}
+
+.month-btn:disabled {
+    color: #cbd5e1;
+    background: #f8fafc;
+    cursor: not-allowed;
+}

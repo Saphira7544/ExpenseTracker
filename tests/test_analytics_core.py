@@ -107,3 +107,22 @@ def test_empty_data():
     assert core.trend(lines, "%Y") == []
     assert core.category_trend(lines, "%Y") == {"periods": [], "series": {}}
     assert core.month_summary(lines, 0)["biggest_expense_description"] is None
+
+
+def test_ignored_categories_are_left_out_of_every_total():
+    rows = SHARED_MONTH + [
+        ("t9", "2026-03-20", "Transfer to my Revolut", "Investments", -10000.0, "CHF"),  # money going to be invested
+        ("t10", "2026-03-21", "Exchanged to EUR", "Internal", -7476.7, "CHF"),          # same money, converted
+    ]
+    with_internal = prepared(rows, SHARED_SPLITS, investment=("Investments",))
+    lines = core.classify(with_internal, ("Salary",), ("Investments",), ("Internal",))
+    t = core.totals(lines)
+    assert t["expenses"] == -140.0          # the exchange is not spending
+    assert t["invested"] == 11000.0         # 1000 + 10000, counted once
+    assert t["savings_rate"] == pytest.approx(97.2)
+    assert "Internal" not in {r["category"] for r in core.category_breakdown(lines)}
+    assert all(r["description"] != "Exchanged to EUR" for r in core.top_merchants(lines))
+
+    # without the ignored role the same exchange would count as spending
+    unignored = core.classify(with_internal, ("Salary",), ("Investments",), ())
+    assert core.totals(unignored)["expenses"] == pytest.approx(-140.0 - 7476.7)

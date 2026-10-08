@@ -1,103 +1,195 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Net Worth Config</h1>
+<link rel="stylesheet" href="{{ static_url('networth.css') }}">
 
-<div class="card">
-  <p>Manage dropdown values used in the Net Worth module.</p>
+<div class="page-header">
+  <div>
+    <h1>Net Worth Config</h1>
+    <p class="page-subtitle">The lists you pick from when adding accounts. Reorder with the arrows; rename with the pencil.
+      Values used by accounts can't be deleted, but you can switch them off.</p>
+  </div>
 </div>
 
-<div id="configSections"></div>
+<div class="config-grid" id="configGrid"></div>
 
 <script>
-const TABLES = [
-  ["institutions", "Institutions"],
-  ["asset_categories", "Asset Categories"],
-  ["account_types", "Account Types"],
-  ["currencies", "Currencies"],
-  ["liquidity_statuses", "Liquidity Statuses"],
+const LISTS = [
+  { key: "institutions", title: "Institutions", icon: "fa-building-columns", field: "institution_id",
+    hint: "Banks and providers that hold your accounts.", placeholder: "e.g. PostFinance" },
+  { key: "asset_categories", title: "Asset categories", icon: "fa-layer-group", field: "asset_category_id",
+    hint: "What the money is: cash, ETFs, pension… (used for the allocation chart).", placeholder: "e.g. Crypto" },
+  { key: "account_types", title: "Account types", icon: "fa-folder-tree", field: "account_type_id",
+    hint: "How the account works: checking, savings, investment…", placeholder: "e.g. Brokerage" },
+  { key: "currencies", title: "Currencies", icon: "fa-coins", field: "currency_id",
+    hint: "Currencies your accounts are held in (3-letter codes).", placeholder: "e.g. GBP", upper: true },
+  { key: "liquidity_statuses", title: "Liquidity", icon: "fa-droplet", field: "liquidity_status_id",
+    hint: "Names containing \"liquid\" count as liquid, \"illiquid\" as illiquid in your totals.", placeholder: "e.g. Semi-liquid" },
 ];
 
-async function loadConfig() {
-  const res = await fetch("/api/networth/lookups");
-  const data = await res.json();
-  const root = document.getElementById("configSections");
-  root.innerHTML = "";
+let lookups = {};
+let accounts = [];
+let renaming = null;   // { key, id } being renamed
 
-  TABLES.forEach(([key, label]) => {
-    const items = data[key] || [];
-    const section = document.createElement("div");
-    section.className = "card";
-    section.innerHTML = `
-      <h2 style="font-size:18px; margin-bottom:12px;">${label}</h2>
-      <div style="display:flex; gap:8px; margin-bottom:12px;">
-        <input id="new-${key}-value" placeholder="New ${label.slice(0, -1)}" />
-        <input id="new-${key}-sort" type="number" placeholder="Sort" value="0" style="width:100px;" />
-        <button onclick="addLookup('${key}')">Add</button>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Value</th>
-            <th>Sort</th>
-            <th>Active</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${items.map(item => `
-            <tr>
-              <td><input id="${key}-value-${item.id}" value="${esc(item.value)}" /></td>
-              <td><input id="${key}-sort-${item.id}" type="number" value="${item.sort_order}" style="width:90px;" /></td>
-              <td><input id="${key}-active-${item.id}" type="checkbox" ${item.is_active ? "checked" : ""} /></td>
-              <td>
-                <button onclick="saveLookup('${key}', ${item.id})">Save</button>
-                <button onclick="deleteLookup('${key}', ${item.id})">Delete</button>
-              </td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    `;
-    root.appendChild(section);
-  });
+const usage = (list, id) => accounts.filter(a => a[list.field] === id).length;
+
+async function load() {
+  const [l, d] = await Promise.all([
+    fetch("/api/networth/lookups").then(r => r.json()),
+    fetch("/api/networth/dashboard").then(r => r.json()),
+  ]);
+  lookups = l;
+  accounts = d.accounts;
+  render();
 }
 
-async function addLookup(tableKey) {
-  const value = document.getElementById(`new-${tableKey}-value`).value;
-  const sortOrder = Number(document.getElementById(`new-${tableKey}-sort`).value || 0);
-  if (!value.trim()) return;
-
-  await fetch(`/api/networth/lookups/${tableKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ value, sort_order: sortOrder }),
-  });
-
-  loadConfig();
+function itemRow(list, item, index, items) {
+  const used = usage(list, item.id);
+  const isRenaming = renaming && renaming.key === list.key && renaming.id === item.id;
+  const name = isRenaming
+    ? `<input class="rename" value="${esc(item.value)}" data-rename="${item.id}" aria-label="New name">`
+    : `<span class="lookup-name" title="${esc(item.value)}">${esc(item.value)}</span>`;
+  return `
+    <li class="lookup-item ${item.is_active ? "" : "inactive"}" data-id="${item.id}">
+      <span class="order-btns">
+        <button type="button" data-action="up" title="Move up" ${index === 0 ? "disabled" : ""}><i class="fa-solid fa-chevron-up"></i></button>
+        <button type="button" data-action="down" title="Move down" ${index === items.length - 1 ? "disabled" : ""}><i class="fa-solid fa-chevron-down"></i></button>
+      </span>
+      ${name}
+      <span class="usage">${used ? `${used} account${used === 1 ? "" : "s"}` : "unused"}</span>
+      <label class="switch" title="${item.is_active ? "Active: offered when adding accounts" : "Inactive: hidden from new accounts"}">
+        <input type="checkbox" data-action="toggle" ${item.is_active ? "checked" : ""} aria-label="Active"><span></span>
+      </label>
+      <button type="button" class="icon-btn small" data-action="rename" title="Rename"><i class="fa-solid fa-pen"></i></button>
+      <button type="button" class="icon-btn small danger" data-action="delete" ${used ? `disabled title="Used by ${used} account${used === 1 ? "" : "s"}: switch it off instead"` : 'title="Delete"'}><i class="fa-solid fa-trash"></i></button>
+    </li>`;
 }
 
-async function saveLookup(tableKey, id) {
-  const value = document.getElementById(`${tableKey}-value-${id}`).value;
-  const sort_order = Number(document.getElementById(`${tableKey}-sort-${id}`).value || 0);
-  const is_active = document.getElementById(`${tableKey}-active-${id}`).checked;
+function render() {
+  document.getElementById("configGrid").innerHTML = LISTS.map(list => {
+    const items = lookups[list.key] || [];
+    return `
+      <section class="card config-card" data-key="${list.key}">
+        <h2><i class="fa-solid ${list.icon}"></i>${list.title}</h2>
+        <p class="card-hint">${esc(list.hint)}</p>
+        <ul class="lookup-list">
+          ${items.map((item, i) => itemRow(list, item, i, items)).join("") || '<li class="lookup-empty">Nothing yet.</li>'}
+        </ul>
+        <form class="add-row" data-add="${list.key}">
+          <input type="text" placeholder="${esc(list.placeholder)}" aria-label="New ${esc(list.title)} value" ${list.upper ? 'maxlength="3"' : ""}>
+          <button type="submit" class="secondary"><i class="fa-solid fa-plus"></i> Add</button>
+        </form>
+        <p class="card-error" role="alert"></p>
+      </section>`;
+  }).join("");
 
-  await fetch(`/api/networth/lookups/${tableKey}/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ value, sort_order, is_active }),
-  });
-
-  loadConfig();
+  const input = document.querySelector("input.rename");
+  if (input) { input.focus(); input.select(); }
 }
 
-async function deleteLookup(tableKey, id) {
-  await fetch(`/api/networth/lookups/${tableKey}/${id}`, {
-    method: "DELETE",
-  });
-
-  loadConfig();
+function showError(key, message) {
+  document.querySelector(`.config-card[data-key="${key}"] .card-error`).textContent = message;
 }
 
-loadConfig();
+async function apiError(res) {
+  const body = await res.json().catch(() => ({}));
+  return typeof body.detail === "string" ? body.detail : `Request failed (${res.status})`;
+}
+
+async function patchItem(key, item, changes) {
+  const body = { value: item.value, sort_order: item.sort_order, is_active: item.is_active, ...changes };
+  const res = await fetch(`/api/networth/lookups/${key}/${item.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await apiError(res));
+}
+
+// Moving swaps positions; every item then gets its index as sort_order.
+async function move(key, id, delta) {
+  const items = [...lookups[key]];
+  const i = items.findIndex(x => x.id === id), j = i + delta;
+  if (j < 0 || j >= items.length) return;
+  [items[i], items[j]] = [items[j], items[i]];
+  await Promise.all(items.map((item, index) => item.sort_order === index ? null : patchItem(key, item, { sort_order: index })));
+}
+
+async function rename(key, id, value) {
+  const item = lookups[key].find(x => x.id === id);
+  renaming = null;
+  const list = LISTS.find(l => l.key === key);
+  value = list.upper ? value.trim().toUpperCase() : value.trim();
+  if (value && value !== item.value) await patchItem(key, item, { value });
+}
+
+const grid = document.getElementById("configGrid");
+
+grid.addEventListener("click", async e => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn || btn.disabled) return;
+  const key = btn.closest(".config-card").dataset.key;
+  const id = Number(btn.closest(".lookup-item").dataset.id);
+  const item = lookups[key].find(x => x.id === id);
+  showError(key, "");
+  try {
+    if (btn.dataset.action === "up") await move(key, id, -1);
+    if (btn.dataset.action === "down") await move(key, id, 1);
+    if (btn.dataset.action === "rename") { renaming = { key, id }; render(); return; }
+    if (btn.dataset.action === "delete") {
+      if (!confirm(`Delete "${item.value}"?`)) return;
+      const res = await fetch(`/api/networth/lookups/${key}/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await apiError(res));
+    }
+    await load();
+  } catch (err) {
+    showError(key, err.message);
+  }
+});
+
+grid.addEventListener("change", async e => {
+  if (e.target.dataset.action !== "toggle") return;
+  const key = e.target.closest(".config-card").dataset.key;
+  const item = lookups[key].find(x => x.id === Number(e.target.closest(".lookup-item").dataset.id));
+  try { await patchItem(key, item, { is_active: e.target.checked }); await load(); }
+  catch (err) { showError(key, err.message); }
+});
+
+// Enter or leaving the field saves; Escape cancels. `renaming` guards against saving twice.
+async function commitRename(input) {
+  if (!renaming) return;
+  const key = input.closest(".config-card").dataset.key;
+  try { await rename(key, Number(input.dataset.rename), input.value); await load(); }
+  catch (err) { showError(key, err.message); render(); }
+}
+
+grid.addEventListener("keydown", e => {
+  if (!e.target.matches("input.rename")) return;
+  if (e.key === "Enter") { e.preventDefault(); commitRename(e.target); }
+  if (e.key === "Escape") { renaming = null; render(); }
+});
+
+grid.addEventListener("focusout", e => {
+  if (e.target.matches("input.rename")) commitRename(e.target);
+});
+
+grid.addEventListener("submit", async e => {
+  e.preventDefault();
+  const key = e.target.dataset.add;
+  const list = LISTS.find(l => l.key === key);
+  const input = e.target.querySelector("input");
+  const value = list.upper ? input.value.trim().toUpperCase() : input.value.trim();
+  if (!value) return;
+  if (lookups[key].some(x => x.value.toLowerCase() === value.toLowerCase())) {
+    showError(key, `"${value}" is already in the list.`);
+    return;
+  }
+  const res = await fetch(`/api/networth/lookups/${key}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value, sort_order: lookups[key].length }),
+  });
+  if (!res.ok) { showError(key, await apiError(res)); return; }
+  await load();
+  document.querySelector(`form[data-add="${key}"] input`).focus();
+});
+
+load();
 </script>
 {% endblock %}

@@ -121,3 +121,20 @@ def test_suggests_separator_and_encoding(revolut_file, tmp_path):
     latin = tmp_path / "cgd.csv"
     latin.write_bytes("Data mov.;Descrição;Débito\n05-03-2026;CAFÉ;3,50\n".encode("latin1"))
     assert suggest_file_settings(str(latin)) == {"encoding": "latin1", "sep": ";"}
+
+
+def test_category_roles_must_not_overlap():
+    from app.services.settings import validate_settings, DEFAULT_SETTINGS
+    assert validate_settings(dict(DEFAULT_SETTINGS)) is None
+    clash = {**DEFAULT_SETTINGS, "ignored_categories": ["Internal", "Salary"]}
+    assert "only have one role" in validate_settings(clash)
+    assert "Unknown" in validate_settings({**DEFAULT_SETTINGS, "ignored_categories": ["Nope"]})
+
+
+def test_every_category_has_a_fixed_colour():
+    from app.core.categories import CATEGORIES, CATEGORY_COLORS
+    import re
+    missing = [c for c in CATEGORIES + ["Uncategorized", "Split"] if c not in CATEGORY_COLORS]
+    assert missing == []
+    assert all(re.fullmatch(r"#[0-9a-f]{6}", v) for v in CATEGORY_COLORS.values())
+    assert len(set(CATEGORY_COLORS.values())) == len(CATEGORY_COLORS)  # no two categories share a colour

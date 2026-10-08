@@ -42,9 +42,18 @@ function renderSummaryCards(summary) {
     `;
 }
 
-function renderCategoryPieChart(breakdown) {
+const PIE_MAX_SLICES = 7;  // the rest fold into "Other" (the table below lists every category)
+
+function pieSlices(breakdown) {
     // A category can be net negative (more paid back than spent); a pie can't show that.
-    breakdown = breakdown.filter(r => r.total > 0);
+    const positive = breakdown.filter(r => r.total > 0);
+    const top = positive.filter(r => r.category !== 'Other').slice(0, PIE_MAX_SLICES);
+    const rest = positive.filter(r => !top.includes(r)).reduce((sum, r) => sum + r.total, 0);
+    return rest > 0 ? top.concat([{ category: 'Other', total: rest }]) : top;
+}
+
+function renderCategoryPieChart(breakdown) {
+    breakdown = pieSlices(breakdown);
     destroyChart('categoryPie');
     const ctx = document.getElementById('categoryPieChart');
     registerChart('categoryPie', new Chart(ctx, {
@@ -53,7 +62,7 @@ function renderCategoryPieChart(breakdown) {
             labels: breakdown.map(r => r.category),
             datasets: [{
                 data: breakdown.map(r => r.total),
-                backgroundColor: breakdown.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+                backgroundColor: breakdown.map(r => categoryColor(r.category)),
                 borderWidth: 2,
                 borderColor: '#fff',
             }],
@@ -68,9 +77,9 @@ function renderCategoryPieChart(breakdown) {
 
 function renderCategoryTable(breakdown) {
     const tbody = document.querySelector('#category-table tbody');
-    tbody.innerHTML = breakdown.map((r, i) => `
+    tbody.innerHTML = breakdown.map(r => `
         <tr>
-            <td><span class="category-swatch" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span></td>
+            <td><span class="category-swatch" style="background:${categoryColor(r.category)}"></span></td>
             <td>${esc(r.category)}</td>
             <td class="numeric">${fmtMoney(r.total)}</td>
         </tr>
@@ -111,11 +120,37 @@ function renderTopMerchants(rows) {
     `).join('') || '<tr><td colspan="3">No data for this month</td></tr>';
 }
 
-function populateMonthSelect(months, selected) {
-    const select = document.getElementById('month-select');
-    select.innerHTML = months.map(m =>
-        `<option value="${m}" ${m === selected ? 'selected' : ''}>${formatPeriodLabel(m)}</option>`
-    ).join('');
+// ---------- Year dropdown + January..December buttons ----------
+
+let currentMonth = null;        // 'YYYY-MM' being shown
+let availableMonths = [];       // months that have data, newest first
+
+const MONTH_NAMES = Array.from({ length: 12 }, (_, i) =>
+    new Date(2000, i, 1).toLocaleDateString(undefined, { month: 'short' }));
+
+function renderMonthPicker() {
+    const [year, month] = currentMonth.split('-');
+    const years = [...new Set(availableMonths.map(m => m.slice(0, 4)))];   // newest first
+
+    const yearSelect = document.getElementById('year-select');
+    yearSelect.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+    yearSelect.value = year;
+
+    document.getElementById('month-buttons').innerHTML = MONTH_NAMES.map((name, i) => {
+        const value = `${year}-${String(i + 1).padStart(2, '0')}`;
+        const hasData = availableMonths.includes(value);
+        const selected = value === currentMonth;
+        return `<button type="button" role="radio" class="month-btn${selected ? ' selected' : ''}"
+                    data-month="${value}" aria-checked="${selected}" ${hasData ? '' : 'disabled title="No transactions this month"'}>${esc(name)}</button>`;
+    }).join('');
+}
+
+// Switching year keeps the same month when that year has data for it,
+// otherwise jumps to the year's most recent month with data.
+function monthForYear(year) {
+    const sameMonth = `${year}-${currentMonth.slice(5)}`;
+    if (availableMonths.includes(sameMonth)) return sameMonth;
+    return availableMonths.find(m => m.startsWith(`${year}-`));
 }
 
 async function loadMonthly(month) {
@@ -129,9 +164,11 @@ async function loadMonthly(month) {
     }
     const data = await res.json();
 
-    setupCurrencySelect(data, () => loadMonthly(document.getElementById('month-select').value));
+    setupCurrencySelect(data, () => loadMonthly(currentMonth));
     renderFxNotice(data);
-    populateMonthSelect(data.available_months, data.selected_month);
+    availableMonths = data.available_months;
+    currentMonth = data.selected_month;
+    if (currentMonth) renderMonthPicker();
     renderSummaryCards(data.month_summary);
     renderCategoryPieChart(data.category_breakdown);
     renderCategoryTable(data.category_breakdown);
@@ -142,7 +179,12 @@ async function loadMonthly(month) {
 document.addEventListener('DOMContentLoaded', () => {
     loadMonthly();
 
-    document.getElementById('month-select').addEventListener('change', (e) => {
-        loadMonthly(e.target.value);
+    document.getElementById('year-select').addEventListener('change', (e) => {
+        loadMonthly(monthForYear(e.target.value));
+    });
+
+    document.getElementById('month-buttons').addEventListener('click', (e) => {
+        const btn = e.target.closest('.month-btn');
+        if (btn && !btn.disabled && btn.dataset.month !== currentMonth) loadMonthly(btn.dataset.month);
     });
 });

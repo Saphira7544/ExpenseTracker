@@ -115,23 +115,6 @@ th { color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercas
     background: #9ca3af; /* neutral fallback so new categories always look fine */
 }
 
-.cat-Investments { background: #7c3aed; }
-.cat-Groceries { background: #16a34a; }
-.cat-Restaurants-Bars { background: #f97316; }
-.cat-Transport { background: #0ea5e9; }
-.cat-Housing { background: #b45309; }
-.cat-Rents { background: #92400e; }
-.cat-Health { background: #ef4444; }
-.cat-Subscriptions { background: #6366f1; }
-.cat-Transfers { background: #64748b; }
-.cat-Shopping { background: #ec4899; }
-.cat-Entertainment { background: #eab308; color: #1f2937; }
-.cat-Education-Work { background: #14b8a6; }
-.cat-Travel { background: #3b82f6; }
-.cat-Salary { background: #22c55e; }
-.cat-Split { background: #a855f7; }
-.cat-Sports { background: #4ef8dc; }
-.cat-Other { background: #9ca3af; }
 
 .modal-overlay {
   display: none;

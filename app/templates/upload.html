@@ -198,7 +198,7 @@ function openReview() {
         <td><div class="review-desc" title="${esc(r.description)}">${esc(r.description)}</div>
             ${multipleFiles ? `<div class="small-muted">${esc(preview.files[r.file].filename)}</div>` : ""}</td>
         <td class="nowrap">${esc(r.account)}</td>
-        <td class="nowrap">${esc(r.category || "Uncategorized")} ${tag}</td>
+        <td class="nowrap">${categoryBadge(r.category)} ${tag}</td>
         <td class="num nowrap ${r.amount >= 0 ? "amount-positive" : "amount-negative"}">${esc(formatAmount(r.amount))} <span class="small-muted">${esc(r.currency)}</span></td>
       </tr>`;
   }).join("");

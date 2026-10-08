@@ -1,33 +1,46 @@
 {% extends "base.html" %}
 {% block content %}
+<link rel="stylesheet" href="{{ static_url('networth.css') }}">
 
-<h1>Net Worth Analytics</h1>
-
-<div class="charts-grid">
-    <div class="card chart-card">
-        <h2><i class="fa-solid fa-chart-line"></i> Net Worth Trend</h2>
-        <canvas id="netWorthTrendChart"></canvas>
-    </div>
-
-    <div class="card chart-card">
-        <h2><i class="fa-solid fa-arrow-trend-up"></i> Investment Value Over Time</h2>
-        <canvas id="investmentTrendChart"></canvas>
-    </div>
-
-    <div class="card chart-card">
-        <h2><i class="fa-solid fa-chart-pie"></i> Asset Allocation</h2>
-        <canvas id="assetAllocationChart"></canvas>
-    </div>
-
-    <div class="card chart-card">
-        <h2><i class="fa-solid fa-droplet"></i> Liquid vs Illiquid</h2>
-        <canvas id="liquiditySplitChart"></canvas>
-    </div>
+<div class="page-header">
+  <div>
+    <h1>Net Worth Analytics</h1>
+    <p class="page-subtitle">Trend from your snapshots; allocation from each account's latest value.</p>
+  </div>
 </div>
 
-<link rel="stylesheet" href="{{ static_url('networth_analytics.css') }}">
+<div class="nw-tiles" id="tiles"></div>
+
+<div class="nw-charts">
+  <div class="card wide">
+    <h2>Net worth over time</h2>
+    <p class="card-hint">Liquid and illiquid stacked: the top of the area is your total net worth at each snapshot.</p>
+    <div class="chart-box tall"><canvas id="netWorthChart" aria-label="Net worth over time"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>Allocation by asset category</h2>
+    <p class="card-hint">Latest value of each account, grouped by category.</p>
+    <div class="alloc-layout">
+      <div class="chart-box"><canvas id="allocationChart" aria-label="Allocation by asset category"></canvas></div>
+      <table class="alloc-table" id="allocationTable"></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>By institution</h2>
+    <p class="card-hint">Where your money is held.</p>
+    <table class="alloc-table" id="institutionTable"></table>
+  </div>
+
+  <div class="card wide">
+    <h2>Investments over time</h2>
+    <p class="card-hint">Accounts whose category mentions invest, stock, ETF, fund or crypto.</p>
+    <div class="chart-box"><canvas id="investmentChart" aria-label="Investment value over time"></canvas></div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="{{ static_url('charts-common.js') }}"></script>
 <script src="{{ static_url('networth-charts.js') }}"></script>
-<script src="{{ static_url('networth-quick-update.js') }}"></script>
 {% endblock %}

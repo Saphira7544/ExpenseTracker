@@ -80,6 +80,8 @@ def fetch_rates(start: date, end: date, currencies: list[str]) -> list[tuple[str
         timeout=15,
         follow_redirects=True,
     )
+    if response.status_code == 404:
+        return []   # no rates in that range yet (e.g. today's not published, or a weekend)
     response.raise_for_status()
     return [
         (currency, date.fromisoformat(day), float(rate))
@@ -154,3 +156,21 @@ def load_rates(currencies: set[str]) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=["currency", "rate_date", "per_eur"])
     df["rate_date"] = pd.to_datetime(df["rate_date"])
     return df
+
+
+def rate_on(from_currency: str, to_currency: str, day: date) -> dict | None:
+    """Units of to_currency per 1 from_currency on `day` (latest rate on or before it)."""
+    from_currency, to_currency = from_currency.upper(), to_currency.upper()
+    if from_currency == to_currency:
+        return {"rate": 1.0, "rate_date": day.isoformat()}
+    currencies = {from_currency, to_currency}
+    # Look back two weeks: weekends, holidays and not-yet-published days use the last rate.
+    ensure_rates(currencies, day - timedelta(days=14))
+    rates = load_rates(currencies)
+    dates = np.array([np.datetime64(day, "ns")])
+    rate = (per_eur(dates, to_currency, rates) / per_eur(dates, from_currency, rates))[0]
+    if np.isnan(rate):
+        return None
+    known = rates[(rates["currency"].isin(currencies - {"EUR"})) & (rates["rate_date"] <= pd.Timestamp(day))]
+    rate_date = known["rate_date"].max() if not known.empty else rates["rate_date"].min()
+    return {"rate": round(float(rate), 6), "rate_date": pd.Timestamp(rate_date).date().isoformat()}

@@ -52,7 +52,7 @@ async function loadRules() {
   rules.forEach(r => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><span class="badge cat-${esc(r.category.replace(/[\/\s]/g, "-"))}">${esc(r.category)}</span></td>
+      <td>${categoryBadge(r.category)}</td>
       <td>${esc(r.keyword)}</td>
       <td><button class="danger delete-rule-btn" data-id="${esc(r.id)}">Delete</button></td>
     `;

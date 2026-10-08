@@ -22,6 +22,9 @@ from app.services.networth import (
     account_refs_belong_to_user,
     account_belongs_to_user,
     LOOKUP_TABLES,
+    LookupInUse,
+    LookupDuplicate,
+    SnapshotDateTaken,
 )
 
 router = APIRouter()
@@ -98,13 +101,19 @@ def get_lookup_items(table_key: str, user: dict = Depends(get_current_user)):
 @router.post("/api/networth/lookups/{table_key}")
 def create_lookup_item(table_key: str, payload: LookupCreate, user: dict = Depends(get_current_user)):
     _check_table_key(table_key)
-    item_id = create_lookup(table_key, user["id"], payload.value, payload.sort_order)
+    try:
+        item_id = create_lookup(table_key, user["id"], payload.value, payload.sort_order)
+    except LookupDuplicate as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return {"id": item_id}
 
 @router.patch("/api/networth/lookups/{table_key}/{item_id}")
 def update_lookup_item(table_key: str, item_id: int, payload: LookupUpdate, user: dict = Depends(get_current_user)):
     _check_table_key(table_key)
-    ok = update_lookup(table_key, user["id"], item_id, payload.value, payload.sort_order, payload.is_active)
+    try:
+        ok = update_lookup(table_key, user["id"], item_id, payload.value, payload.sort_order, payload.is_active)
+    except LookupDuplicate as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     if not ok:
         raise HTTPException(status_code=404, detail="Lookup item not found")
     return {"status": "ok"}
@@ -112,7 +121,10 @@ def update_lookup_item(table_key: str, item_id: int, payload: LookupUpdate, user
 @router.delete("/api/networth/lookups/{table_key}/{item_id}")
 def delete_lookup_item(table_key: str, item_id: int, user: dict = Depends(get_current_user)):
     _check_table_key(table_key)
-    ok = delete_lookup(table_key, user["id"], item_id)
+    try:
+        ok = delete_lookup(table_key, user["id"], item_id)
+    except LookupInUse as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     if not ok:
         raise HTTPException(status_code=404, detail="Lookup item not found")
     return {"status": "deleted"}
@@ -161,12 +173,18 @@ def remove_valuation(valuation_id: int, user: dict = Depends(get_current_user)):
 
 @router.post("/api/networth/snapshots")
 def add_snapshot(payload: SnapshotPayload, user: dict = Depends(get_current_user)):
-    snapshot_id = create_snapshot(user["id"], payload.model_dump())
+    try:
+        snapshot_id = create_snapshot(user["id"], payload.model_dump())
+    except SnapshotDateTaken as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return {"id": snapshot_id}
 
 @router.patch("/api/networth/snapshots/{snapshot_id}")
 def edit_snapshot(snapshot_id: int, payload: SnapshotPayload, user: dict = Depends(get_current_user)):
-    ok = update_snapshot(user["id"], snapshot_id, payload.model_dump())
+    try:
+        ok = update_snapshot(user["id"], snapshot_id, payload.model_dump())
+    except SnapshotDateTaken as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     if not ok:
         raise HTTPException(status_code=404, detail="Snapshot not found")
     return {"status": "ok"}

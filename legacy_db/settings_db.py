@@ -13,6 +13,11 @@ def create_settings_tables():
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         """))
+        # Categories left out of every dashboard total (own-account moves, currency exchanges).
+        conn.execute(text("""
+            ALTER TABLE user_settings
+            ADD COLUMN IF NOT EXISTS ignored_categories TEXT[] NOT NULL DEFAULT '{Internal}'
+        """))
 
         # Description substrings skipped on import (internal transfers etc.).
         # bank NULL = applies to every bank.

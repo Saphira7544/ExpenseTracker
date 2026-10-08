@@ -1,534 +1,192 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Net Worth</h1>
+<link rel="stylesheet" href="{{ static_url('dialogs.css') }}">
+<link rel="stylesheet" href="{{ static_url('networth.css') }}">
+
+<div class="page-header">
+  <div>
+    <h1>Net Worth</h1>
+    <p class="page-subtitle">Your accounts and their latest values. Record a snapshot to add a point to the trend.</p>
+  </div>
+  <div class="page-actions">
+    <button class="secondary" id="recordSnapshotBtn"><i class="fa-solid fa-camera"></i>Record snapshot</button>
+    <button class="primary" id="addAccountBtn"><i class="fa-solid fa-plus"></i>Add account</button>
+  </div>
+</div>
+
+<div class="nw-tiles" id="tiles"></div>
 
 <div class="card">
-  <div class="toolbar">
-    <button class="btn" onclick="showAccountForm()">+ Add Account</button>
-    <button class="btn" onclick="showValuationForm()">+ Add Valuation</button>
-    <button class="btn ghost" onclick="computeSnapshot()">Compute Snapshot</button>
-    <button class="btn ghost" onclick="showSnapshotForm()">+ Add Snapshot</button>
-    <a href="/networth/config"><button class="btn small">Manage Config</button></a>
+  <div class="nw-tabs" role="tablist">
+    <button class="nw-tab active" role="tab" data-tab="accounts">Accounts<span class="count" id="countAccounts"></span></button>
+    <button class="nw-tab" role="tab" data-tab="history">Value history<span class="count" id="countHistory"></span></button>
+    <button class="nw-tab" role="tab" data-tab="snapshots">Snapshots<span class="count" id="countSnapshots"></span></button>
   </div>
-</div>
 
-<div class="card">
-  <h2 style="font-size:18px;">Summary</h2>
-  <div id="summaryBox"></div>
-</div>
-
-<div class="card" id="accountFormCard" style="display:none;">
-  <h2 style="font-size:18px;">Account Form</h2>
-  <input type="hidden" id="account-id" />
-  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
-    <input id="account-name" placeholder="Account Name" />
-    <select id="account-institution"></select>
-    <select id="account-category"></select>
-    <select id="account-type"></select>
-    <select id="account-currency"></select>
-    <select id="account-liquidity"></select>
-    <input id="account-ticker" placeholder="Ticker/Symbol" />
-    <label><input id="account-active" type="checkbox" checked /> Active</label>
-  </div>
-  <div style="margin-top:12px;">
-    <button onclick="saveAccount()">Save Account</button>
-    <button onclick="hideAccountForm()">Cancel</button>
-  </div>
-</div>
-
-<div class="card" id="valuationFormCard" style="display:none;">
-  <h2 style="font-size:18px;">Valuation Form</h2>
-  <input type="hidden" id="valuation-id" />
-  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
-    <select id="valuation-account"></select>
-    <input id="valuation-date" type="date" />
-    <input id="valuation-quantity" type="number" step="any" placeholder="Quantity" />
-    <input id="valuation-avg-purchase" type="number" step="any" placeholder="Avg Purchase Price" />
-    <input id="valuation-current-price" type="number" step="any" placeholder="Current Price" />
-    <input id="valuation-original-value" type="number" step="any" placeholder="Current Value Original" />
-    <input id="valuation-fx" type="number" step="any" placeholder="FX to CHF" />
-    <input id="valuation-realized-pnl" type="number" step="any" placeholder="Realized P&L">
-    <input id="valuation-chf" type="number" step="any" placeholder="Current Value CHF" />
-    <input id="valuation-source" placeholder="Source" value="manual" />
-    <input id="valuation-note" placeholder="Note" />
-  </div>
-  <div style="margin-top:12px;">
-    <button onclick="saveValuation()">Save Valuation</button>
-    <button onclick="hideValuationForm()">Cancel</button>
-  </div>
-</div>
-
-<div class="card" id="snapshotFormCard" style="display:none;">
-  <h2 style="font-size:18px;">Snapshot Form</h2>
-  <input type="hidden" id="snapshot-id" />
-  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
-    <input id="snapshot-date" type="date" />
-    <input id="snapshot-liquid" type="number" step="any" placeholder="Total Liquid CHF" />
-    <input id="snapshot-illiquid" type="number" step="any" placeholder="Total Illiquid CHF" />
-    <input id="snapshot-total" type="number" step="any" placeholder="Total Net Worth CHF" />
-    <input id="snapshot-mom-chf" type="number" step="any" placeholder="MoM Change CHF" />
-    <input id="snapshot-mom-pct" type="number" step="any" placeholder="MoM Change %" />
-    <input id="snapshot-notes" placeholder="Notes" />
-  </div>
-  <div style="margin-top:12px;">
-    <button onclick="saveSnapshot()">Save Snapshot</button>
-    <button onclick="hideSnapshotForm()">Cancel</button>
-  </div>
-</div>
-
-<div class="card">
-  <h2 style="font-size:18px;">Accounts</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Institution</th>
-        <th>Category</th>
-        <th>Type</th>
-        <th>Currency</th>
-        <th>Liquidity</th>
-        <th>Ticker</th>
-        <th>Active</th>
-        <th>Current Value</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="accountsBody"></tbody>
-  </table>
-</div>
-
-<div class="card">
-  <h2 style="font-size:18px;">Valuations</h2>
-  <table>
-    <thead>
-      <tr>
-        <tr>
-          <th>Account</th>
-          <th>Date</th>
-          <th>Quantity</th>
-          <th>Value orig</th>
-          <th>Cost Basis</th>
-          <th>Unrealized P&L</th>
-          <th>Total Return</th>
-          <th>Realized P&L</th>
-          <th>FX to CHF</th>
-          <th>Value CHF</th>
-          <th>Liquidity</th>
-          <th>Actions</th>
-        </tr>  
-      </tr>
-    </thead>
-    <tbody id="valuationsBody"></tbody>
-  </table>
-</div>
-
-<div class="card">
-  <h2 style="font-size:18px;">Snapshots</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Liquid</th>
-        <th>Illiquid</th>
-        <th>Total</th>
-        <th>MoM CHF</th>
-        <th>MoM %</th>
-        <th>Notes</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="snapshotsBody"></tbody>
-  </table>
-</div>
-
-<script src="{{ static_url('networth-quick-update.js') }}"></script>
-
-<script>
-let dashboardData = null;
-
-function fillSelect(selectId, items, placeholder = "-- Select --", valueField = "id", labelField = "value") {
-  const select = document.getElementById(selectId);
-  select.innerHTML = `<option value="">${placeholder}</option>`;
-  items.filter(x => x.is_active !== false).forEach(item => {
-    const option = document.createElement("option");
-    option.value = item[valueField];
-    option.textContent = item[labelField];
-    select.appendChild(option);
-  });
-}
-
-function populateLookups(lookups, accounts) {
-  fillSelect("account-institution", lookups.institutions);
-  fillSelect("account-category", lookups.asset_categories);
-  fillSelect("account-type", lookups.account_types);
-  fillSelect("account-currency", lookups.currencies);
-  fillSelect("account-liquidity", lookups.liquidity_statuses);
-
-  const valuationAccount = document.getElementById("valuation-account");
-  valuationAccount.innerHTML = `<option value="">-- Select Account --</option>`;
-  accounts.forEach(a => {
-    const option = document.createElement("option");
-    option.value = a.id;
-    option.textContent = a.account_name;
-    valuationAccount.appendChild(option);
-  });
-}
-
-async function loadDashboard() {
-  const res = await fetch("/api/networth/dashboard");
-  dashboardData = await res.json();
-
-  populateLookups(dashboardData.lookups, dashboardData.accounts);
-
-  const summary = document.getElementById("summaryBox");
-  if (dashboardData.latest_snapshot) {
-    const s = dashboardData.latest_snapshot;
-    summary.innerHTML = `
-      <div style="display:flex; gap:16px; flex-wrap:wrap;">
-        <div><strong>Total:</strong> CHF ${Number(s.total_networth_chf).toFixed(2)}</div>
-        <div><strong>Liquid:</strong> CHF ${Number(s.total_liquid_chf).toFixed(2)}</div>
-        <div><strong>Illiquid:</strong> CHF ${Number(s.total_illiquid_chf).toFixed(2)}</div>
-        <div><strong>Date:</strong> ${s.snapshot_date}</div>
-      </div>
-    `;
-  } else {
-    summary.innerHTML = `<p>No snapshot data yet.</p>`;
-  }
-
-  const accountsBody = document.getElementById("accountsBody");
-  accountsBody.innerHTML = dashboardData.accounts.map(a => `
-    <tr>
-      <td>${esc(a.account_name)}</td>
-      <td>${esc(a.institution)}</td>
-      <td>${esc(a.asset_category)}</td>
-      <td>${esc(a.account_type)}</td>
-      <td>${esc(a.currency)}</td>
-      <td>${esc(a.liquidity_status)}</td>
-      <td>${esc(a.ticker_symbol)}</td>
-      <td>${a.is_active ? "Yes" : "No"}</td>
-      <td data-current-value-for="${a.id}"></td>
-      <td class="actions">
-        <button class="icon-btn" title="Update Value" onclick="openQuickUpdateModal(${a.id})">
-            <i class="fa-solid fa-arrow-trend-up"></i>
-        </button>
-        <button class="icon-btn" title="Edit" onclick="editAccount(${a.id})">
-          <i class="fa-solid fa-pen-to-square"></i>
-        </button>
-        <button class="icon-btn danger" title="Delete" onclick="deleteAccount(${a.id})">
-          <i class="fa-solid fa-trash"></i>
-        </button>
-      </td>
-    </tr>
-  `).join("");
-
-  renderAccountCurrentValues();
-
-  const valuationsBody = document.getElementById("valuationsBody");
-  valuationsBody.innerHTML = dashboardData.valuations.map(v => `
-    <tr>
-      <td>${esc(v.account_name)}</td>
-      <td>${v.valuation_date}</td>
-      <td class="numeric">${v.quantity == null ? "" : Number(v.quantity).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-      <td class="numeric">${v.current_value_original == null ? "" : `${esc(v.currency)} ${Number(v.current_value_original).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`}</td>
-      ${(() => {
-          const costBasis = (v.quantity != null && v.avg_purchase_price != null) ? v.quantity * v.avg_purchase_price : null;
-          const unrealized = (costBasis != null && v.current_value_original != null) ? v.current_value_original - costBasis : null;
-          const returnPct = (costBasis && unrealized != null) ? (unrealized / costBasis) * 100 : null;
-          const cls = unrealized == null ? '' : (unrealized >= 0 ? 'amount-positive' : 'amount-negative');
-          return `
-              <td class="numeric">${costBasis != null ? costBasis.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
-              <td class="numeric ${cls}">${unrealized != null ? unrealized.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
-              <td class="numeric ${cls}">${returnPct != null ? returnPct.toFixed(1) + '%' : '—'}</td>
-              <td class="numeric">${v.realized_pnl != null ? Number(v.realized_pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '0.00'}</td>
-          `;
-      })()}
-      <td class="numeric">${v.exchange_rate_to_chf == null ? "" : Number(v.exchange_rate_to_chf).toFixed(4)}</td>
-      <td class="numeric strong">CHF ${Number(v.current_value_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-      <td>${esc(v.liquidity_status)}</td>
-      <td class="actions">
-        <button class="icon-btn" title="Edit" onclick="editValuation(${v.id})">
-          <i class="fa-regular fa-pen-to-square"></i>
-        </button>
-        <button class="icon-btn danger" title="Delete" onclick="deleteValuation(${v.id})">
-          <i class="fa-solid fa-trash"></i>
-        </button>
-      </td>
-    </tr>
-  `).join("");
-
-  const snapshotsBody = document.getElementById("snapshotsBody");
-  snapshotsBody.innerHTML = dashboardData.snapshots.map(s => `
-    <tr>
-      <td>${s.snapshot_date}</td>
-      <td class="liquid-value">CHF ${Number(s.total_liquid_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-      <td class="illiquid-value">CHF ${Number(s.total_illiquid_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-      <td class="total-value">CHF ${Number(s.total_networth_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-      <td class="mom-value">${s.mom_change_chf == null ? "" : "CHF " + Number(s.mom_change_chf).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-      <td class="mom-pct">${s.mom_change_pct == null ? "" : Number(s.mom_change_pct).toFixed(2) + "%"}</td>
-      <td>${esc(s.notes)}</td>
-      <td class="actions">
-        <button class="icon-btn" title="Edit" onclick="editSnapshot(${s.id})">
-          <i class="fa-regular fa-pen-to-square"></i>
-        </button>
-        <button class="icon-btn danger" title="Delete" onclick="deleteSnapshot(${s.id})">
-          <i class="fa-solid fa-trash"></i>
-        </button>
-      </td>
-    </tr>
-  `).join("");
-}
-
-function showAccountForm() { document.getElementById("accountFormCard").style.display = "block"; }
-function hideAccountForm() { document.getElementById("accountFormCard").style.display = "none"; clearAccountForm(); }
-function showValuationForm() { document.getElementById("valuationFormCard").style.display = "block"; }
-function hideValuationForm() { document.getElementById("valuationFormCard").style.display = "none"; clearValuationForm(); }
-function showSnapshotForm() { document.getElementById("snapshotFormCard").style.display = "block"; }
-function hideSnapshotForm() { document.getElementById("snapshotFormCard").style.display = "none"; clearSnapshotForm(); }
-
-function clearAccountForm() {
-  document.getElementById("account-id").value = "";
-  document.getElementById("account-name").value = "";
-  document.getElementById("account-institution").value = "";
-  document.getElementById("account-category").value = "";
-  document.getElementById("account-type").value = "";
-  document.getElementById("account-currency").value = "";
-  document.getElementById("account-liquidity").value = "";
-  document.getElementById("account-ticker").value = "";
-  document.getElementById("account-active").checked = true;
-}
-
-function clearValuationForm() {
-  document.getElementById("valuation-id").value = "";
-  document.getElementById("valuation-account").value = "";
-  document.getElementById("valuation-date").value = "";
-  document.getElementById("valuation-quantity").value = "";
-  document.getElementById("valuation-avg-purchase").value = "";
-  document.getElementById("valuation-current-price").value = "";
-  document.getElementById("valuation-original-value").value = "";
-  document.getElementById("valuation-fx").value = "";
-  document.getElementById("valuation-chf").value = "";
-  document.getElementById('valuation-realized-pnl').value = 0;
-  document.getElementById("valuation-source").value = "manual";
-  document.getElementById("valuation-note").value = "";
-}
-
-function clearSnapshotForm() {
-  document.getElementById("snapshot-id").value = "";
-  document.getElementById("snapshot-date").value = "";
-  document.getElementById("snapshot-liquid").value = "";
-  document.getElementById("snapshot-illiquid").value = "";
-  document.getElementById("snapshot-total").value = "";
-  document.getElementById("snapshot-mom-chf").value = "";
-  document.getElementById("snapshot-mom-pct").value = "";
-  document.getElementById("snapshot-notes").value = "";
-}
-
-async function saveAccount() {
-  const id = document.getElementById("account-id").value;
-  const payload = {
-    account_name: document.getElementById("account-name").value,
-    institution_id: Number(document.getElementById("account-institution").value) || null,
-    asset_category_id: Number(document.getElementById("account-category").value) || null,
-    account_type_id: Number(document.getElementById("account-type").value) || null,
-    currency_id: Number(document.getElementById("account-currency").value) || null,
-    liquidity_status_id: Number(document.getElementById("account-liquidity").value) || null,
-    ticker_symbol: document.getElementById("account-ticker").value,
-    is_active: document.getElementById("account-active").checked,
-  };
-
-  await fetch(id ? `/api/networth/accounts/${id}` : "/api/networth/accounts", {
-    method: id ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  hideAccountForm();
-  loadDashboard();
-}
-
-function editAccount(id) {
-  const a = dashboardData.accounts.find(x => x.id === id);
-  showAccountForm();
-  document.getElementById("account-id").value = a.id;
-  document.getElementById("account-name").value = a.account_name || "";
-  document.getElementById("account-institution").value = a.institution_id || "";
-  document.getElementById("account-category").value = a.asset_category_id || "";
-  document.getElementById("account-type").value = a.account_type_id || "";
-  document.getElementById("account-currency").value = a.currency_id || "";
-  document.getElementById("account-liquidity").value = a.liquidity_status_id || "";
-  document.getElementById("account-ticker").value = a.ticker_symbol || "";
-  document.getElementById("account-active").checked = a.is_active;
-}
-
-async function deleteAccount(id) {
-  await fetch(`/api/networth/accounts/${id}`, { method: "DELETE" });
-  loadDashboard();
-}
-
-async function saveValuation() {
-  const id = document.getElementById("valuation-id").value;
-  const payload = {
-    account_id: Number(document.getElementById("valuation-account").value),
-    valuation_date: document.getElementById("valuation-date").value,
-    quantity: parseFloat(document.getElementById("valuation-quantity").value) || null,
-    avg_purchase_price: parseFloat(document.getElementById("valuation-avg-purchase").value) || null,
-    current_price: parseFloat(document.getElementById("valuation-current-price").value) || null,
-    current_value_original: parseFloat(document.getElementById("valuation-original-value").value) || null,
-    exchange_rate_to_chf: parseFloat(document.getElementById("valuation-fx").value) || null,
-    current_value_chf: parseFloat(document.getElementById("valuation-chf").value),
-    realized_pnl: parseFloat(document.getElementById('valuation-realized-pnl').value) || 0,
-    source: document.getElementById("valuation-source").value,
-    note: document.getElementById("valuation-note").value,
-  };
-
-  await fetch(id ? `/api/networth/valuations/${id}` : "/api/networth/valuations", {
-    method: id ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  hideValuationForm();
-  loadDashboard();
-}
-
-function editValuation(id) {
-  const v = dashboardData.valuations.find(x => x.id === id);
-  showValuationForm();
-  document.getElementById("valuation-id").value = v.id;
-  document.getElementById("valuation-account").value = v.account_id || "";
-  document.getElementById("valuation-date").value = v.valuation_date || "";
-  document.getElementById("valuation-quantity").value = v.quantity ?? "";
-  document.getElementById("valuation-avg-purchase").value = v.avg_purchase_price ?? "";
-  document.getElementById("valuation-current-price").value = v.current_price ?? "";
-  document.getElementById("valuation-original-value").value = v.current_value_original ?? "";
-  document.getElementById("valuation-fx").value = v.exchange_rate_to_chf ?? "";
-  document.getElementById("valuation-chf").value = v.current_value_chf ?? "";
-  document.getElementById("valuation-realized-pnl").value = v.realized_pnl ?? 0;
-  document.getElementById("valuation-source").value = v.source || "manual";
-  document.getElementById("valuation-note").value = v.note || "";
-}
-
-async function deleteValuation(id) {
-  await fetch(`/api/networth/valuations/${id}`, { method: "DELETE" });
-  loadDashboard();
-}
-
-async function saveSnapshot() {
-  const id = document.getElementById("snapshot-id").value;
-  const payload = {
-    snapshot_date: document.getElementById("snapshot-date").value,
-    total_liquid_chf: parseFloat(document.getElementById("snapshot-liquid").value),
-    total_illiquid_chf: parseFloat(document.getElementById("snapshot-illiquid").value),
-    total_networth_chf: parseFloat(document.getElementById("snapshot-total").value),
-    mom_change_chf: parseFloat(document.getElementById("snapshot-mom-chf").value) || null,
-    mom_change_pct: parseFloat(document.getElementById("snapshot-mom-pct").value) || null,
-    notes: document.getElementById("snapshot-notes").value,
-  };
-
-  await fetch(id ? `/api/networth/snapshots/${id}` : "/api/networth/snapshots", {
-    method: id ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  hideSnapshotForm();
-  loadDashboard();
-}
-
-function editSnapshot(id) {
-  const s = dashboardData.snapshots.find(x => x.id === id);
-  showSnapshotForm();
-  document.getElementById("snapshot-id").value = s.id;
-  document.getElementById("snapshot-date").value = s.snapshot_date || "";
-  document.getElementById("snapshot-liquid").value = s.total_liquid_chf ?? "";
-  document.getElementById("snapshot-illiquid").value = s.total_illiquid_chf ?? "";
-  document.getElementById("snapshot-total").value = s.total_networth_chf ?? "";
-  document.getElementById("snapshot-mom-chf").value = s.mom_change_chf ?? "";
-  document.getElementById("snapshot-mom-pct").value = s.mom_change_pct ?? "";
-  document.getElementById("snapshot-notes").value = s.notes || "";
-}
-
-async function deleteSnapshot(id) {
-  await fetch(`/api/networth/snapshots/${id}`, { method: "DELETE" });
-  loadDashboard();
-}
-
-async function computeSnapshot() {
-  const res = await fetch('/api/networth/compute-snapshot', { method: 'POST' });
-  if (!res.ok) { 
-    alert('Compute failed'); 
-    return; 
-  }
-  const data = await res.json();
-  
-  // Fill the snapshot form and open it
-  document.getElementById('snapshot-date').value = data.snapshot_date;
-  document.getElementById('snapshot-liquid').value = data.total_liquid_chf.toFixed(2);
-  document.getElementById('snapshot-illiquid').value = data.total_illiquid_chf.toFixed(2);
-  document.getElementById('snapshot-total').value = data.total_networth_chf.toFixed(2);
-  
-  showSnapshotForm();
-}
-
-loadDashboard();
-</script>
-
-<div class="modal-overlay" id="quickUpdateModal">
-    <div class="modal-box" style="width: 460px;">
-        <h2 style="font-size: 16px; margin-bottom: 4px;">
-            Update value — <span id="quickUpdateAccountName"></span>
-        </h2>
-        <p id="quickUpdateHint" class="small-muted" style="margin-bottom: 12px;"></p>
-
-        <input type="hidden" id="quickUpdateAccountId">
-
-        <label style="font-size: 12px; color: #6b7280;">Date</label>
-        <input type="date" id="quickUpdateDate" style="margin-bottom: 10px;">
-
-        <p style="font-size: 12px; color: #6b7280; margin: 12px 0 4px;">
-            For stocks/ETFs — leave blank for simple lump-sum accounts
-        </p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-            <div>
-                <label style="font-size: 12px; color: #6b7280;">Quantity (shares)</label>
-                <input type="number" step="any" id="quickUpdateQuantity" placeholder="e.g. 26.75" oninput="onQuantityOrPriceChange()">
-            </div>
-            <div>
-                <label style="font-size: 12px; color: #6b7280;">Current price / unit</label>
-                <input type="number" step="any" id="quickUpdatePrice" placeholder="e.g. 823.30" oninput="onQuantityOrPriceChange()">
-            </div>
-        </div>
-        <div style="margin-bottom: 10px;">
-            <label style="font-size: 12px; color: #6b7280;">Avg. purchase price / unit (cost basis)</label>
-            <input type="number" step="any" id="quickUpdateAvgPrice" placeholder="e.g. 735.83" oninput="onAvgPriceChange()">
-        </div>
-
-        <label style="font-size: 12px; color: #6b7280;">
-            Value in original currency (<span id="quickUpdateCurrencyLabel"></span>) — Market Value
-        </label>
-        <input type="number" step="any" id="quickUpdateOriginalValue" placeholder="0.00" style="margin-bottom: 6px;" oninput="onOriginalValueChange()">
-
-        <p id="quickUpdatePerformanceSummary" class="small-muted" style="margin-bottom: 10px; min-height: 16px;"></p>
-
-        <label style="font-size: 12px; color: #6b7280;">Exchange rate to CHF</label>
-        <input type="number" step="any" id="quickUpdateFx" placeholder="1.00" style="margin-bottom: 10px;" oninput="onFxChange()">
-
-        <label style="font-size: 12px; color: #6b7280; font-weight: 700;">Value in CHF</label>
-        <input type="number" step="any" id="quickUpdateValue" placeholder="0.00" style="margin-bottom: 10px;">
-
-        <label style="font-size: 12px; color: #6b7280;">Realized P&amp;L to date (optional)</label>
-        <input type="number" step="any" id="quickUpdateRealizedPnl" placeholder="0.00" style="margin-bottom: 10px;">
-
-        <label style="font-size: 12px; color: #6b7280;">Note (optional)</label>
-        <input type="text" id="quickUpdateNote" placeholder="e.g. quarterly statement" style="margin-bottom: 10px;">
-
-        <p id="quickUpdateError" style="color: #dc2626; font-size: 13px; margin-bottom: 8px;"></p>
-
-        <div style="display: flex; gap: 8px;">
-            <button class="primary" onclick="saveQuickUpdate()">Save new value</button>
-            <button class="secondary" onclick="closeQuickUpdateModal()">Cancel</button>
-        </div>
+  <!-- Accounts -->
+  <section class="nw-panel active" id="panel-accounts" role="tabpanel">
+    <div class="panel-toolbar">
+      <span class="small-muted">Grouped by institution. Use <i class="fa-solid fa-arrow-trend-up"></i> to record a new value.</span>
+      <label class="checkbox-inline"><input type="checkbox" id="showInactive"> Show inactive accounts</label>
     </div>
+    <div class="table-scroll">
+      <table class="nw-table">
+        <thead>
+          <tr>
+            <th>Account</th><th>Category</th><th>Type</th><th>Liquidity</th>
+            <th class="num">Current value</th><th class="col-actions"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="accountsBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Value history -->
+  <section class="nw-panel" id="panel-history" role="tabpanel">
+    <div class="panel-toolbar">
+      <span class="small-muted">Every value you recorded, newest first.</span>
+      <select id="historyAccountFilter" aria-label="Filter by account"></select>
+    </div>
+    <div class="table-scroll">
+      <table class="nw-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Account</th><th class="num">Value</th><th class="num">Value CHF</th>
+            <th class="num">Unrealised return</th><th class="num">Realised P&amp;L</th><th>Note</th>
+            <th class="col-actions"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Snapshots -->
+  <section class="nw-panel" id="panel-snapshots" role="tabpanel">
+    <div class="panel-toolbar">
+      <span class="small-muted">Points on your net-worth trend. The change is calculated against the previous snapshot.</span>
+    </div>
+    <div class="table-scroll">
+      <table class="nw-table">
+        <thead>
+          <tr>
+            <th>Date</th><th class="num">Net worth</th><th class="num">Liquid</th><th class="num">Illiquid</th>
+            <th class="num">Change</th><th>Notes</th><th class="col-actions"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="snapshotsBody"></tbody>
+      </table>
+    </div>
+  </section>
 </div>
 
+<!-- Account dialog -->
+<div class="modal-overlay" id="accountModal">
+  <div class="modal-box dialog-box" role="dialog" aria-modal="true" aria-labelledby="accountTitle">
+    <div class="dialog-header">
+      <h1 id="accountTitle">Add account</h1>
+      <button type="button" class="icon-btn small" data-close title="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="dialog-note">Missing an institution or category? Add it on <a href="/networth/config">Net Worth Config</a>.</p>
+    <form id="accountForm" novalidate>
+      <div class="form-grid">
+        <label class="span-2">Account name
+          <input type="text" id="accName" placeholder="e.g. UBS - Savings" required>
+        </label>
+        <label>Ticker <span class="field-hint">for ETFs/stocks</span>
+          <input type="text" id="accTicker" placeholder="e.g. CSPX">
+        </label>
+        <label>Institution <select id="accInstitution"></select></label>
+        <label>Category <select id="accCategory"></select></label>
+        <label>Account type <select id="accType"></select></label>
+        <label>Currency <select id="accCurrency"></select></label>
+        <label>Liquidity <select id="accLiquidity"></select></label>
+        <label class="checkbox-label"><input type="checkbox" id="accActive" checked> Active</label>
+      </div>
+      <p class="form-error" id="accountError" role="alert"></p>
+      <div class="dialog-footer">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close>Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Value (valuation) dialog: new value for an account, or edit a past one -->
+<div class="modal-overlay" id="valueModal">
+  <div class="modal-box dialog-box" role="dialog" aria-modal="true" aria-labelledby="valueTitle">
+    <div class="dialog-header">
+      <h1 id="valueTitle">Record value</h1>
+      <button type="button" class="icon-btn small" data-close title="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="dialog-note" id="valueHint"></p>
+    <form id="valueForm" novalidate>
+      <div class="form-grid">
+        <label class="span-2">Account <select id="valAccount" required></select></label>
+        <label>Date <input type="date" id="valDate" required></label>
+      </div>
+
+      <p class="form-section-title">Holdings <span class="field-hint">(optional, for ETFs/stocks: fills in the value)</span></p>
+      <div class="form-grid">
+        <label>Quantity <input type="number" step="any" id="valQuantity" placeholder="e.g. 26.75"></label>
+        <label>Price per unit <input type="number" step="any" id="valPrice" placeholder="e.g. 823.30"></label>
+        <label>Avg. purchase price <input type="number" step="any" id="valAvgPrice" placeholder="cost basis per unit"></label>
+      </div>
+
+      <p class="form-section-title">Value</p>
+      <div class="form-grid">
+        <label>Value in <span id="valCurrencyLabel">account currency</span>
+          <input type="number" step="any" id="valOriginal" placeholder="0.00">
+        </label>
+        <label>Rate to CHF
+          <input type="number" step="any" id="valFx" placeholder="1.00">
+          <button type="button" class="inline-link" id="valFxFetch">Use ECB rate for this date</button>
+        </label>
+        <label>Value in CHF <span class="field-hint">used for net worth</span>
+          <input type="number" step="any" id="valChf" placeholder="0.00" required>
+        </label>
+        <label>Realised P&amp;L to date <input type="number" step="any" id="valRealized" placeholder="0.00"></label>
+        <label class="span-2">Note <input type="text" id="valNote" placeholder="e.g. quarterly statement"></label>
+      </div>
+      <p class="calc-summary" id="valSummary"></p>
+
+      <p class="form-error" id="valueError" role="alert"></p>
+      <div class="dialog-footer">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close>Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Snapshot dialog -->
+<div class="modal-overlay" id="snapshotModal">
+  <div class="modal-box dialog-box" role="dialog" aria-modal="true" aria-labelledby="snapshotTitle" style="width:520px;">
+    <div class="dialog-header">
+      <h1 id="snapshotTitle">Record snapshot</h1>
+      <button type="button" class="icon-btn small" data-close title="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="dialog-note" id="snapshotHint"></p>
+    <form id="snapshotForm" novalidate>
+      <div class="form-grid">
+        <label>Date <input type="date" id="snapDate" required></label>
+        <label>Liquid (CHF) <input type="number" step="any" id="snapLiquid" required></label>
+        <label>Illiquid (CHF) <input type="number" step="any" id="snapIlliquid" required></label>
+        <label>Net worth (CHF) <input type="number" id="snapTotal" readonly tabindex="-1"></label>
+        <label class="span-2">Notes <input type="text" id="snapNotes" placeholder="optional"></label>
+      </div>
+      <p class="form-error" id="snapshotError" role="alert"></p>
+      <div class="dialog-footer">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" data-close>Cancel</button>
+        <button type="submit" class="primary">Save snapshot</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="{{ static_url('networth.js') }}"></script>
 {% endblock %}

@@ -191,10 +191,6 @@ let selectedIds = new Set();
 let rowsById = new Map();     // transactions on the current page, for the dialogs
 let filterData = { accounts: [], categories: [], currencies: [] };
 
-function catClass(cat) {
-  return "cat-" + (cat || "Other").replace(/[\/\s]/g, "-");
-}
-
 function options(values, selected) {
   return values.map(v => `<option value="${esc(v)}" ${v === selected ? "selected" : ""}>${esc(v)}</option>`).join("");
 }
@@ -262,7 +258,7 @@ function rowHtml(tx) {
     </td>
     <td>${esc(tx.account)}</td>
     <td>
-      <span class="badge ${esc(catClass(tx.category))}">${esc(tx.category || "Uncategorized")}</span>
+      ${categoryBadge(tx.category)}
       ${tx.is_manual_category && !isSplit ? '<span class="manual-tag" title="Category set by hand; rules leave it alone">manual</span>' : ''}
     </td>
     <td class="col-amount ${amountClass}">${esc(formatAmount(tx.amount))}<span class="tx-currency">${esc(tx.currency)}</span></td>

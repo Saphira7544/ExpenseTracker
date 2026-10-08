@@ -22,6 +22,7 @@ class SettingsUpdate(BaseModel):
     display_currency: Optional[str] = None
     income_categories: Optional[list[str]] = None
     investment_categories: Optional[list[str]] = None
+    ignored_categories: Optional[list[str]] = None
 
 
 class ExclusionCreate(BaseModel):

@@ -49,7 +49,8 @@ def _prepare(user_id: int, currency: str | None) -> tuple[pd.DataFrame, pd.DataF
         lines["value"], missing = fx.convert(lines, target, fx.load_rates(currencies))
         lines = lines.dropna(subset=["value"])
 
-    lines = core.classify(lines, settings["income_categories"], settings["investment_categories"])
+    lines = core.classify(lines, settings["income_categories"], settings["investment_categories"],
+                          settings["ignored_categories"])
     meta = {
         "currency": target,
         "available_currencies": SUPPORTED_DISPLAY_CURRENCIES,
@@ -211,8 +212,31 @@ def get_liquidity_split(user_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_institution_allocation(user_id: int) -> list[dict]:
+    """Latest value per account, summed by institution."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT
+                COALESCE(i.name, 'No institution') AS institution,
+                SUM(v.current_value_chf) AS total_chf
+            FROM networth_valuations v
+            JOIN networth_accounts a ON v.account_id = a.id
+            LEFT JOIN networth_institutions i ON a.institution_id = i.id
+            WHERE v.user_id = :user_id
+              AND v.valuation_date = (
+                  SELECT MAX(v2.valuation_date)
+                  FROM networth_valuations v2
+                  WHERE v2.account_id = a.id AND v2.user_id = :user_id
+              )
+            GROUP BY COALESCE(i.name, 'No institution')
+            ORDER BY total_chf DESC
+        """), {"user_id": user_id}).mappings().all()
+    return [dict(r) for r in rows]
+
+
 def get_networth_analytics_bundle(user_id: int) -> dict:
     return {
+        "institution_allocation": get_institution_allocation(user_id),
         "networth_trend": get_networth_trend(user_id),
         "investment_trend": get_investment_trend(user_id),
         "asset_allocation": get_asset_allocation(user_id),

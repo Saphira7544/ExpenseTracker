@@ -1,5 +1,21 @@
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from app.db.session import engine
+
+
+class LookupInUse(Exception):
+    pass
+
+
+class LookupDuplicate(Exception):
+    pass
+
+
+class SnapshotDateTaken(Exception):
+    pass
+
+
+SNAPSHOT_DATE_TAKEN = "There is already a snapshot on this date; edit that one instead."
 
 LOOKUP_TABLES = {
     "institutions": ("networth_institutions", "name"),
@@ -47,6 +63,13 @@ def list_lookup(table_key: str, user_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 def create_lookup(table_key: str, user_id: int, value: str, sort_order: int = 0) -> int:
+    try:
+        return _create_lookup(table_key, user_id, value, sort_order)
+    except IntegrityError:
+        raise LookupDuplicate(f'"{value.strip()}" is already in the list.')
+
+
+def _create_lookup(table_key: str, user_id: int, value: str, sort_order: int = 0) -> int:
     table, value_col = LOOKUP_TABLES[table_key]
     with engine.connect() as conn:
         result = conn.execute(text(f"""
@@ -62,6 +85,13 @@ def create_lookup(table_key: str, user_id: int, value: str, sort_order: int = 0)
         return result.scalar()
 
 def update_lookup(table_key: str, user_id: int, item_id: int, value: str, sort_order: int, is_active: bool) -> bool:
+    try:
+        return _update_lookup(table_key, user_id, item_id, value, sort_order, is_active)
+    except IntegrityError:
+        raise LookupDuplicate(f'"{value.strip()}" is already in the list.')
+
+
+def _update_lookup(table_key: str, user_id: int, item_id: int, value: str, sort_order: int, is_active: bool) -> bool:
     table, value_col = LOOKUP_TABLES[table_key]
     with engine.connect() as conn:
         result = conn.execute(text(f"""
@@ -80,13 +110,17 @@ def update_lookup(table_key: str, user_id: int, item_id: int, value: str, sort_o
 
 def delete_lookup(table_key: str, user_id: int, item_id: int) -> bool:
     table, _ = LOOKUP_TABLES[table_key]
-    with engine.connect() as conn:
-        result = conn.execute(text(f"""
-            DELETE FROM {table}
-            WHERE id = :id AND user_id = :user_id
-        """), {"id": item_id, "user_id": user_id})
-        conn.commit()
-        return result.rowcount > 0
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(f"""
+                DELETE FROM {table}
+                WHERE id = :id AND user_id = :user_id
+            """), {"id": item_id, "user_id": user_id})
+            conn.commit()
+            return result.rowcount > 0
+    except IntegrityError:
+        # Accounts still reference it (foreign key).
+        raise LookupInUse("This value is used by accounts; deactivate it instead, or change those accounts first.")
 
 def get_lookup_bundle(user_id: int) -> dict:
     return {key: list_lookup(key, user_id) for key in LOOKUP_TABLES.keys()}
@@ -299,14 +333,35 @@ def list_snapshots(user_id: int) -> list[dict]:
         """), {"user_id": user_id}).mappings().all()
     return [dict(r) for r in rows]
 
-def create_snapshot(user_id: int, payload: dict) -> int:
-    prev = get_previous_snapshot(user_id, payload["snapshot_date"])
-    mom_change_chf = None
-    mom_change_pct = None
+def _recompute_snapshot_changes(conn, user_id: int) -> None:
+    """Change vs the previous snapshot, for every snapshot in date order.
+    Recomputed after any create/edit/delete so the chain never goes stale."""
+    rows = conn.execute(text("""
+        SELECT id, total_networth_chf FROM networth_snapshots
+        WHERE user_id = :user_id ORDER BY snapshot_date
+    """), {"user_id": user_id}).all()
+    previous = None
+    for snapshot_id, total in rows:
+        change = pct = None
+        if previous not in (None, 0):
+            change = float(total) - float(previous)
+            pct = change / float(previous) * 100
+        conn.execute(text("""
+            UPDATE networth_snapshots SET mom_change_chf = :change, mom_change_pct = :pct
+            WHERE id = :id
+        """), {"change": change, "pct": pct, "id": snapshot_id})
+        previous = total
 
-    if prev and prev["total_networth_chf"] not in (None, 0):
-        mom_change_chf = payload["total_networth_chf"] - float(prev["total_networth_chf"])
-        mom_change_pct = (mom_change_chf / float(prev["total_networth_chf"])) * 100
+
+def create_snapshot(user_id: int, payload: dict) -> int:
+    try:
+        return _create_snapshot(user_id, payload)
+    except IntegrityError:
+        raise SnapshotDateTaken(SNAPSHOT_DATE_TAKEN)
+
+
+def _create_snapshot(user_id: int, payload: dict) -> int:
+    mom_change_chf = mom_change_pct = None   # filled in by _recompute_snapshot_changes
 
     with engine.connect() as conn:
         result = conn.execute(text("""
@@ -329,10 +384,19 @@ def create_snapshot(user_id: int, payload: dict) -> int:
             "mom_change_pct": mom_change_pct,
             "notes": (payload.get("notes") or "").strip() or None,
         })
+        snapshot_id = result.scalar()
+        _recompute_snapshot_changes(conn, user_id)
         conn.commit()
-        return result.scalar()
+        return snapshot_id
 
 def update_snapshot(user_id: int, snapshot_id: int, payload: dict) -> bool:
+    try:
+        return _update_snapshot(user_id, snapshot_id, payload)
+    except IntegrityError:
+        raise SnapshotDateTaken(SNAPSHOT_DATE_TAKEN)
+
+
+def _update_snapshot(user_id: int, snapshot_id: int, payload: dict) -> bool:
     with engine.connect() as conn:
         result = conn.execute(text("""
             UPDATE networth_snapshots
@@ -341,8 +405,6 @@ def update_snapshot(user_id: int, snapshot_id: int, payload: dict) -> bool:
                 total_liquid_chf = :total_liquid_chf,
                 total_illiquid_chf = :total_illiquid_chf,
                 total_networth_chf = :total_networth_chf,
-                mom_change_chf = :mom_change_chf,
-                mom_change_pct = :mom_change_pct,
                 notes = :notes
             WHERE id = :id AND user_id = :user_id
         """), {
@@ -352,10 +414,9 @@ def update_snapshot(user_id: int, snapshot_id: int, payload: dict) -> bool:
             "total_liquid_chf": payload["total_liquid_chf"],
             "total_illiquid_chf": payload["total_illiquid_chf"],
             "total_networth_chf": payload["total_networth_chf"],
-            "mom_change_chf": payload.get("mom_change_chf"),
-            "mom_change_pct": payload.get("mom_change_pct"),
             "notes": (payload.get("notes") or "").strip() or None,
         })
+        _recompute_snapshot_changes(conn, user_id)
         conn.commit()
         return result.rowcount > 0
 
@@ -365,6 +426,7 @@ def delete_snapshot(user_id: int, snapshot_id: int) -> bool:
             DELETE FROM networth_snapshots
             WHERE id = :id AND user_id = :user_id
         """), {"id": snapshot_id, "user_id": user_id})
+        _recompute_snapshot_changes(conn, user_id)
         conn.commit()
         return result.rowcount > 0
 
@@ -421,16 +483,3 @@ def compute_snapshot_from_valuations(user_id: int) -> dict:
     totals["snapshot_date"] = date.today().isoformat()
     
     return totals
-
-def get_previous_snapshot(user_id: int, snapshot_date: str):
-    with engine.connect() as conn:
-        row = conn.execute(text("""
-            SELECT snapshot_date, total_networth_chf
-            FROM networth_snapshots
-            WHERE user_id = :user_id
-              AND snapshot_date < :snapshot_date
-            ORDER BY snapshot_date DESC
-            LIMIT 1
-        """), {"user_id": user_id, "snapshot_date": snapshot_date}).mappings().first()
-    return dict(row) if row else None
-

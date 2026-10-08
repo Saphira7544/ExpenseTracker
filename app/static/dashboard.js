@@ -76,18 +76,34 @@ function renderOverviewSavingsRateChart(trend) {
             datasets: [{
                 label: 'Savings rate (%)',
                 data: trend.map(r => r.savings_rate),
-                borderColor: '#7c3aed',
-                backgroundColor: 'rgba(124,58,237,0.15)',
-                fill: true,
-                tension: 0.35,
-                pointBackgroundColor: '#7c3aed',
+                // Neutral slate: a rate, not a category (violet means Investments elsewhere).
+                borderColor: '#475569',
+                backgroundColor: 'rgba(71,85,105,0.12)',
+                fill: 'origin',
+                cubicInterpolationMode: 'monotone',  // smooth, but never overshoots the data
+                borderWidth: 2,
+                pointBackgroundColor: '#475569',
                 pointRadius: 4,
             }],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => `Savings rate: ${c.parsed.y.toFixed(1)}%` } },
+            },
+            scales: {
+                // Start at 0 so the line's height is proportional to the rate
+                // (a 30% vs 42% month shouldn't look like a collapse). Negative
+                // months still extend below 0.
+                y: {
+                    beginAtZero: true,
+                    suggestedMax: 50,
+                    ticks: { callback: v => `${v}%` },
+                    grid: { color: c => c.tick.value === 0 ? '#94a3b8' : 'rgba(148,163,184,0.2)' },
+                },
+            },
         },
     }));
 }
@@ -95,16 +111,17 @@ function renderOverviewSavingsRateChart(trend) {
 function renderOverviewCategoryTrendChart(data) {
     destroyChart('overviewCategoryTrend');
     const ctx = document.getElementById('overviewCategoryTrendChart');
-    const categories = Object.keys(data.series);
+    // "Other" (everything outside the top categories) is drawn last, in grey.
+    const categories = Object.keys(data.series).sort((a, b) => (a === 'Other') - (b === 'Other'));
     registerChart('overviewCategoryTrend', new Chart(ctx, {
         type: 'line',
         data: {
             labels: data.periods.map(formatPeriodLabel),
-            datasets: categories.map((cat, i) => ({
+            datasets: categories.map(cat => ({
                 label: cat,
                 data: data.periods.map(p => data.series[cat][p] || 0),
-                borderColor: CHART_COLORS[i % CHART_COLORS.length],
-                backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + '33',
+                borderColor: categoryColor(cat),
+                backgroundColor: categoryColor(cat) + '33',
                 fill: true,
                 tension: 0.3,
             })),

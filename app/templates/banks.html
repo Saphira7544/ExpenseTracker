@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ static_url('dialogs.css') }}">
+<link rel="stylesheet" href="{{ static_url('banks.css') }}">
+
+<div class="page-header">
+  <div>
+    <h1>Banks</h1>
+    <p class="banks-intro">
+      How to read each bank's CSV export. When you upload a file, each active format's
+      <em>recognised by</em> texts are looked for in the first 20 lines, and the first format that
+      matches reads the file. Import exclusions per bank are on the <a href="/settings">Settings</a> page.
+    </p>
+  </div>
+  <button class="primary" id="addFormatBtn"><i class="fa-solid fa-plus"></i>Add bank format</button>
+</div>
+
+<div class="card">
+  <div class="table-scroll">
+    <table class="formats-table">
+      <thead>
+        <tr>
+          <th>Bank</th>
+          <th>Format</th>
+          <th>Account</th>
+          <th>Recognised by</th>
+          <th>Amounts</th>
+          <th>Status</th>
+          <th class="col-actions"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody id="formatsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add / edit format dialog -->
+<div class="modal-overlay" id="formatModal">
+  <div class="modal-box dialog-box bank-dialog" role="dialog" aria-modal="true" aria-labelledby="formatModalTitle">
+    <div class="dialog-header">
+      <h1 id="formatModalTitle">Add bank format</h1>
+      <button type="button" class="icon-btn small" id="formatCloseBtn" title="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="dialog-note">Start with a sample export from the bank: its columns are suggested in the fields below and you can check the result before saving.</p>
+
+    <div class="test-panel">
+      <label style="font-size:12px; font-weight:600; color:#6b7280;">Test with a sample file
+        <span class="field-hint">(nothing is imported)</span>
+      </label>
+      <input type="file" id="testFile" accept=".csv,.txt,text/csv">
+      <div id="testResult"></div>
+    </div>
+
+    <form id="formatForm" novalidate>
+      <p class="form-section-title">Bank</p>
+      <div class="form-grid">
+        <label>Bank <span class="field-hint">short name, e.g. revolut</span>
+          <input type="text" id="fBank" list="bankOptions" required>
+        </label>
+        <label>Format name <span class="field-hint">e.g. debit, card</span>
+          <input type="text" id="fFileType" required>
+        </label>
+        <label>Account <span class="field-hint">shown on transactions</span>
+          <input type="text" id="fAccount" placeholder="e.g. Revolut Main" required>
+        </label>
+      </div>
+      <datalist id="bankOptions"></datalist>
+
+      <p class="form-section-title">File</p>
+      <div class="form-grid">
+        <label class="span-all">Recognised by <span class="field-hint">texts that all appear near the top of every export (usually header names), one per line</span>
+          <textarea id="fHeader" placeholder="Started Date&#10;Completed Date&#10;Description"></textarea>
+        </label>
+        <label>Separator
+          <select id="fSep"></select>
+        </label>
+        <label>Encoding <span class="field-hint">try utf-8 if accents look wrong</span>
+          <select id="fEncoding"></select>
+        </label>
+        <label>Decimal separator
+          <select id="fDecimal">
+            <option value=".">1234.56</option>
+            <option value=",">1234,56</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="form-section-title">Columns</p>
+      <div class="form-grid">
+        <label>Date column
+          <input type="text" id="fDateCol" list="fileColumns" required>
+        </label>
+        <label>Date format
+          <input type="text" id="fDateFormat" list="dateFormats" placeholder="%d.%m.%Y" required>
+        </label>
+        <label>Transaction ID column <span class="field-hint">optional</span>
+          <input type="text" id="fIdCol" list="fileColumns">
+        </label>
+        <label class="span-all">Description columns <span class="field-hint">joined with spaces, one per line</span>
+          <textarea id="fDescCols" placeholder="Description"></textarea>
+        </label>
+      </div>
+
+      <p class="form-section-title">Amounts</p>
+      <div class="segmented" role="radiogroup" aria-label="Amount columns">
+        <label><input type="radio" name="fAmountMode" value="debit_credit" checked><span class="opt">Debit &amp; credit columns</span></label>
+        <label><input type="radio" name="fAmountMode" value="single"><span class="opt">One signed amount column</span></label>
+      </div>
+      <div class="form-grid">
+        <label class="mode-debit_credit">Debit column <span class="field-hint">money out</span>
+          <input type="text" id="fDebitCol" list="fileColumns">
+        </label>
+        <label class="mode-debit_credit">Credit column <span class="field-hint">money in</span>
+          <input type="text" id="fCreditCol" list="fileColumns">
+        </label>
+        <label class="mode-single">Amount column <span class="field-hint">negative = money out</span>
+          <input type="text" id="fAmountCol" list="fileColumns">
+        </label>
+        <label class="mode-single checkbox-label">
+          <input type="checkbox" id="fInvert"> Spending is listed as positive (flip signs)
+        </label>
+        <label>Currency column
+          <input type="text" id="fCurrencyCol" list="fileColumns" placeholder="or use a fixed currency">
+        </label>
+        <label>Fixed currency <span class="field-hint">if the file has none</span>
+          <input type="text" id="fFixedCurrency" maxlength="3" placeholder="e.g. EUR">
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="fDropEmpty" checked> Skip rows without an amount
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="fActive" checked> Active (used on upload)
+        </label>
+      </div>
+      <datalist id="fileColumns"></datalist>
+      <datalist id="dateFormats">
+        <option value="%Y-%m-%d">2026-03-31</option>
+        <option value="%d.%m.%Y">31.03.2026</option>
+        <option value="%d-%m-%Y">31-03-2026</option>
+        <option value="%d/%m/%Y">31/03/2026</option>
+        <option value="%m/%d/%Y">03/31/2026</option>
+        <option value="%Y-%m-%d %H:%M:%S">2026-03-31 14:05:00</option>
+      </datalist>
+
+      <p class="form-error" id="formatError" role="alert"></p>
+
+      <div class="dialog-footer">
+        <div class="spacer"></div>
+        <button type="button" class="secondary" id="formatCancelBtn">Cancel</button>
+        <button type="submit" class="primary" id="formatSaveBtn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let FORMATS = [];
+let SEPARATORS = [];
+let ENCODINGS = [];
+let editingId = null;   // null = new format
+
+const SEP_LABELS = { ";": "Semicolon ;", ",": "Comma ,", "\t": "Tab", "|": "Pipe |" };
+const $ = id => document.getElementById(id);
+const lines = text => text.split(/\r?\n|,(?=\s*\S)/).map(s => s.trim()).filter(Boolean);
+
+async function loadFormats() {
+  const data = await (await fetch("/api/bank-formats")).json();
+  FORMATS = data.formats;
+  SEPARATORS = data.separators;
+  ENCODINGS = data.encodings;
+  renderFormats();
+}
+
+function renderFormats() {
+  const tbody = $("formatsBody");
+  tbody.innerHTML = FORMATS.map(f => {
+    const c = f.config;
+    const amounts = c.amount_col
+      ? `One column: ${esc(c.amount_col)}${c.invert_amount ? " (flipped)" : ""}`
+      : `${esc(c.debit_col)} / ${esc(c.credit_col)}`;
+    const currency = c.currency_col ? `column ${esc(c.currency_col)}` : esc(c.fixed_currency);
+    return `
+      <tr class="${f.is_active ? "" : "inactive"}">
+        <td class="bank-name">${esc(f.bank.toUpperCase())}</td>
+        <td>${esc(f.file_type)}</td>
+        <td>${esc(c.account)}</td>
+        <td><div class="chips">${c.header.map(h => `<span class="chip">${esc(h)}</span>`).join("")}</div></td>
+        <td>${amounts}<div class="small-muted">Currency: ${currency}</div></td>
+        <td>${f.is_active ? '<span class="status-on">Active</span>' : '<span class="status-off">Off</span>'}</td>
+        <td class="col-actions">
+          <div class="actions">
+            <button class="icon-btn small" data-action="edit" data-id="${f.id}" title="Edit"><i class="fa-solid fa-pen"></i></button>
+            <button class="icon-btn small" data-action="copy" data-id="${f.id}" title="Duplicate as a new format"><i class="fa-regular fa-copy"></i></button>
+            <button class="icon-btn small danger" data-action="delete" data-id="${f.id}" title="Delete"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>`;
+  }).join("") || `<tr><td colspan="7" class="empty-state">No bank formats yet. Add one to start importing files.</td></tr>`;
+}
+
+$("formatsBody").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn) return;
+  const fmt = FORMATS.find(f => f.id === Number(btn.dataset.id));
+  if (btn.dataset.action === "edit") openFormatDialog(fmt, false);
+  if (btn.dataset.action === "copy") openFormatDialog(fmt, true);
+  if (btn.dataset.action === "delete") {
+    if (!confirm(`Delete the ${fmt.bank.toUpperCase()} "${fmt.file_type}" format? Files in this format won't be recognised on upload any more.`)) return;
+    await fetch(`/api/bank-formats/${fmt.id}`, { method: "DELETE" });
+    loadFormats();
+  }
+});
+
+// ---------- Dialog ----------
+
+function setAmountMode(mode) {
+  document.querySelector(`input[name="fAmountMode"][value="${mode}"]`).checked = true;
+  document.querySelectorAll(".mode-debit_credit").forEach(el => el.style.display = mode === "debit_credit" ? "" : "none");
+  document.querySelectorAll(".mode-single").forEach(el => el.style.display = mode === "single" ? "" : "none");
+}
+document.querySelectorAll('input[name="fAmountMode"]').forEach(r => r.onchange = () => { setAmountMode(r.value); schedulePreview(); });
+
+function openFormatDialog(fmt = null, asCopy = false) {
+  editingId = fmt && !asCopy ? fmt.id : null;
+  const c = fmt ? fmt.config : {};
+  $("formatForm").reset();
+  $("formatError").textContent = "";
+  $("formatForm").querySelectorAll(".invalid").forEach(el => el.classList.remove("invalid"));
+  $("formatModalTitle").textContent = editingId ? "Edit bank format" : asCopy ? "Duplicate bank format" : "Add bank format";
+
+  $("fSep").innerHTML = SEPARATORS.map(s => `<option value="${esc(s)}">${esc(SEP_LABELS[s] || s)}</option>`).join("");
+  $("fEncoding").innerHTML = ENCODINGS.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join("");
+  $("bankOptions").innerHTML = [...new Set(FORMATS.map(f => f.bank))].map(b => `<option value="${esc(b)}"></option>`).join("");
+
+  $("fBank").value = c.bank || "";
+  $("fFileType").value = asCopy ? `${c.file_type} copy` : (c.file_type || "");
+  $("fAccount").value = c.account || "";
+  $("fHeader").value = (c.header || []).join("\n");
+  $("fSep").value = c.sep || ";";
+  $("fEncoding").value = c.encoding || "utf-8";
+  $("fDecimal").value = c.decimal_sep || ".";
+  $("fDateCol").value = c.date_col || "";
+  $("fDateFormat").value = c.date_format || "";
+  $("fIdCol").value = c.id_col || "";
+  $("fDescCols").value = (c.desc_cols || []).join("\n");
+  $("fDebitCol").value = c.debit_col || "";
+  $("fCreditCol").value = c.credit_col || "";
+  $("fAmountCol").value = c.amount_col || "";
+  $("fInvert").checked = !!c.invert_amount;
+  $("fCurrencyCol").value = c.currency_col || "";
+  $("fFixedCurrency").value = c.fixed_currency || "";
+  $("fDropEmpty").checked = c.drop_empty_amount !== false;
+  $("fActive").checked = fmt ? (asCopy ? true : fmt.is_active) : true;
+  setAmountMode(c.amount_mode || "debit_credit");
+
+  $("testFile").value = "";
+  $("testResult").innerHTML = "";
+  $("fileColumns").innerHTML = "";
+
+  $("formatModal").style.display = "flex";
+  $(fmt ? "fAccount" : "fBank").focus();
+}
+
+function closeFormatDialog() {
+  $("formatModal").style.display = "none";
+}
+
+function readForm() {
+  const mode = document.querySelector('input[name="fAmountMode"]:checked').value;
+  return {
+    bank: $("fBank").value.trim(),
+    file_type: $("fFileType").value.trim(),
+    account: $("fAccount").value.trim(),
+    header: $("fHeader").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+    sep: $("fSep").value,
+    encoding: $("fEncoding").value,
+    decimal_sep: $("fDecimal").value,
+    date_col: $("fDateCol").value.trim(),
+    date_format: $("fDateFormat").value.trim(),
+    id_col: $("fIdCol").value.trim() || null,
+    desc_cols: lines($("fDescCols").value),
+    amount_mode: mode,
+    debit_col: $("fDebitCol").value.trim() || null,
+    credit_col: $("fCreditCol").value.trim() || null,
+    amount_col: $("fAmountCol").value.trim() || null,
+    invert_amount: $("fInvert").checked,
+    currency_col: $("fCurrencyCol").value.trim() || null,
+    fixed_currency: $("fFixedCurrency").value.trim() || null,
+    drop_empty_amount: $("fDropEmpty").checked,
+    is_active: $("fActive").checked,
+  };
+}
+
+const FIELD_INPUTS = {
+  bank: "fBank", file_type: "fFileType", account: "fAccount", header: "fHeader", date_col: "fDateCol",
+  date_format: "fDateFormat", desc_cols: "fDescCols", fixed_currency: "fFixedCurrency", encoding: "fEncoding",
+};
+
+function showApiError(body, status) {
+  $("formatForm").querySelectorAll(".invalid").forEach(el => el.classList.remove("invalid"));
+  if (Array.isArray(body.detail)) {
+    $("formatError").textContent = body.detail.map(d => {
+      const field = d.loc[d.loc.length - 1];
+      if (FIELD_INPUTS[field]) $(FIELD_INPUTS[field]).classList.add("invalid");
+      const name = typeof field === "string" && field !== "body" ? `${field.replace(/_/g, " ")}: ` : "";
+      return name + d.msg.replace(/^Value error, /, "");
+    }).join("; ");
+  } else {
+    $("formatError").textContent = body.detail || `Request failed (${status})`;
+  }
+}
+
+$("formatForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const payload = readForm();
+  const saveBtn = $("formatSaveBtn");
+  saveBtn.disabled = true;
+  try {
+    const res = await fetch(editingId ? `/api/bank-formats/${editingId}` : "/api/bank-formats", {
+      method: editingId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      showApiError(await res.json().catch(() => ({})), res.status);
+      return;
+    }
+    closeFormatDialog();
+    loadFormats();
+  } finally {
+    saveBtn.disabled = false;
+  }
+};
+
+// ---------- Test with a sample file ----------
+
+async function fetchPreview(file) {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("config", JSON.stringify(readForm()));
+  const res = await fetch("/api/bank-formats/preview", { method: "POST", body });
+  return res.ok ? res.json() : null;
+}
+
+let previewTimer = null;
+function schedulePreview() {
+  if (!$("testFile").files.length) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(runPreview, 400);
+}
+$("testFile").onchange = () => runPreview({ applySuggestions: !editingId });
+$("formatForm").addEventListener("input", schedulePreview);
+
+// For a new format, adopt the separator/encoding detected from the file
+// (existing formats are left alone: changing them changes how old files read).
+async function runPreview({ applySuggestions = false } = {}) {
+  const file = $("testFile").files[0];
+  if (!file) return;
+  if (applySuggestions) {
+    const probe = await fetchPreview(file);
+    if (probe && probe.suggested) {
+      $("fSep").value = probe.suggested.sep;
+      $("fEncoding").value = probe.suggested.encoding;
+    }
+  }
+  const body = new FormData();
+  body.append("file", file);
+  body.append("config", JSON.stringify(readForm()));
+  $("testResult").innerHTML = `<p class="test-status muted">Reading ${esc(file.name)}…</p>`;
+
+  const res = await fetch("/api/bank-formats/preview", { method: "POST", body });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    $("testResult").innerHTML = `<p class="test-status bad">${esc(data.detail || "Preview failed")}</p>`;
+    return;
+  }
+
+  $("fileColumns").innerHTML = data.columns.map(c => `<option value="${esc(c)}"></option>`).join("");
+  const header = readForm().header;
+  const parts = [];
+
+  parts.push(header.length
+    ? (data.header_found
+        ? `<span class="ok"><i class="fa-solid fa-circle-check"></i> Recognised: all "recognised by" texts found.</span>`
+        : `<span class="bad"><i class="fa-solid fa-circle-xmark"></i> Not recognised: some "recognised by" texts aren't in the first 20 lines.</span>`)
+    : `<span class="muted">Add "recognised by" texts (e.g. some column names below) so uploads can detect this file.</span>`);
+  parts.push(data.detected
+    ? `<span class="muted"> Currently uploads would read it as <strong>${esc(data.detected)}</strong>.</span>`
+    : `<span class="muted"> No saved format recognises it yet.</span>`);
+
+  let html = `<p class="test-status">${parts.join("")}</p>`;
+  if (data.columns.length) {
+    html += `<p class="test-status muted">Columns in the file (suggested in the column fields):</p>
+             <div class="chips">${data.columns.map(c => `<span class="chip found">${esc(c)}</span>`).join("")}</div>`;
+  }
+  if (data.error) html += `<p class="test-status bad">${esc(data.error)}</p>`;
+
+  if (data.transactions.length) {
+    html += `<p class="test-status ok">${data.total} transactions found. First ${data.transactions.length}:</p>
+      <div class="preview-scroll"><table class="preview-table">
+        <thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>${data.transactions.map(t => `
+          <tr><td style="white-space:nowrap">${esc(t.date)}</td><td>${esc(t.description)}</td>
+          <td style="text-align:right; white-space:nowrap" class="${t.amount >= 0 ? "amount-positive" : "amount-negative"}">${esc(t.amount.toFixed(2))} ${esc(t.currency)}</td></tr>`).join("")}
+        </tbody></table></div>`;
+  } else if (data.raw_rows.length) {
+    html += `<p class="test-status muted">First rows as read:</p>
+      <div class="preview-scroll"><table class="preview-table">
+        <thead><tr>${data.columns.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead>
+        <tbody>${data.raw_rows.map(r => `<tr>${r.slice(0, data.columns.length).map(v => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table></div>`;
+  }
+  $("testResult").innerHTML = html;
+}
+
+$("addFormatBtn").onclick = () => openFormatDialog();
+$("formatCancelBtn").onclick = closeFormatDialog;
+$("formatCloseBtn").onclick = closeFormatDialog;
+$("formatModal").addEventListener("mousedown", e => { if (e.target.id === "formatModal") closeFormatDialog(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("formatModal").style.display === "flex") closeFormatDialog();
+});
+
+loadFormats();
+</script>
+{% endblock %}

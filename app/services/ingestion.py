@@ -6,11 +6,12 @@ from legacy_db.db import insert_transactions
 from app.core.config import settings
 from app.services.transactions import attach_user_to_transactions
 from app.services.settings import get_exclusion_patterns
+from app.services.bank_formats import detection_configs
 
 
 def parse_transactions(file_path: str, user_id: int):
     """Returns (transactions, number of rows skipped by the user's exclusions)."""
-    config = detect_config(file_path)
+    config = detect_config(file_path, detection_configs(user_id))
     bank_parser = GenericParser(config, get_exclusion_patterns(user_id, config["bank"]))
     transactions = bank_parser.parse(file_path)
     return transactions, bank_parser.excluded_count

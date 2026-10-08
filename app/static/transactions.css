@@ -1,24 +1,5 @@
 /* ---------- Transactions page ---------- */
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.page-header button i { margin-right: 6px; }
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
 /* Table */
 .tx-table td { vertical-align: middle; }
 .tx-table .col-select,
@@ -27,10 +8,6 @@
 .tx-table .col-amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tx-table .col-actions { width: 1%; white-space: nowrap; }
 .tx-table tbody tr:hover { background: #f8fafc; }
-
-/* Let the page shrink to the window instead of growing with the table. */
-.main-content { min-width: 0; }
-.table-scroll { overflow-x: auto; }
 
 /* Long bank descriptions: at most two lines, full text on hover. */
 .tx-desc {
@@ -68,12 +45,6 @@
   color: #6b7280;
 }
 
-.empty-state {
-  text-align: center;
-  color: #94a3b8;
-  padding: 28px 12px;
-}
-
 /* Actions column: category picker + fixed icon slots so rows line up */
 .tx-actions {
   display: flex;
@@ -88,89 +59,6 @@
   font-size: 12px;
 }
 
-.icon-btn.small { width: 30px; height: 30px; }
-.icon-btn.small i { font-size: 13px; }
-.icon-slot { display: inline-block; width: 30px; height: 30px; }
-
-/* Add / edit dialog */
-.tx-modal { width: 580px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow-y: auto; }
-
-.tx-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.tx-modal-header h1 { margin: 0; font-size: 18px; }
-
-.tx-modal-note {
-  margin: 6px 0 16px;
-  font-size: 12px;
-  color: #64748b;
-  min-height: 1em;
-}
-
-.segmented {
-  display: inline-flex;
-  margin-bottom: 14px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.segmented label { cursor: pointer; }
-.segmented input { position: absolute; opacity: 0; pointer-events: none; }
-.segmented span {
-  display: inline-block;
-  padding: 7px 16px;
-  font-size: 13px;
-  color: #475569;
-}
-.segmented label + label span { border-left: 1px solid #d1d5db; }
-.segmented input:checked + span.out { background: #fef2f2; color: #b91c1c; font-weight: 600; }
-.segmented input:checked + span.in { background: #f0fdf4; color: #15803d; font-weight: 600; }
-.segmented input:focus-visible + span { outline: 2px solid #4f8ef7; outline-offset: -2px; }
-.segmented input:disabled + span { opacity: 0.6; cursor: not-allowed; }
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.form-grid label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #6b7280;
-}
-
-.form-grid .span-2 { grid-column: span 2; }
-.form-grid .span-all { grid-column: 1 / -1; }
-.form-grid input:disabled,
-.form-grid select:disabled { background: #f3f4f6; color: #6b7280; }
-.form-grid .invalid { border-color: #dc2626; }
-
-.form-error {
-  margin-top: 10px;
-  min-height: 1em;
-  font-size: 13px;
-  color: #dc2626;
-}
-
-.tx-modal-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 18px;
-}
-
-.tx-modal-footer .spacer { flex: 1; }
-
 @media (max-width: 640px) {
-  .form-grid { grid-template-columns: 1fr; }
-  .form-grid .span-2 { grid-column: auto; }
   .tx-actions select { width: 120px; }
 }

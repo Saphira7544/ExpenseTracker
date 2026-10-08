@@ -51,7 +51,16 @@ async def upload_files(
     for file in files:
         save_path = await _save_upload(file, user["id"])
         # Parsing, the DB and the LLM are all blocking; keep them off the event loop.
-        summary = await run_in_threadpool(process_uploaded_file, save_path, user_id=user["id"])
+        try:
+            summary = await run_in_threadpool(process_uploaded_file, save_path, user_id=user["id"])
+        except ValueError as exc:
+            if "Could not detect file format" not in str(exc):
+                raise
+            raise HTTPException(
+                status_code=400,
+                detail=f"{file.filename}: no bank format recognises this file. "
+                       f"Add or fix one on the Banks page.",
+            )
         results.append({"filename": file.filename, **summary})
 
     return {"uploaded": results}

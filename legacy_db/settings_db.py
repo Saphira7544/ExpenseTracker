@@ -35,5 +35,28 @@ def create_settings_tables():
                 PRIMARY KEY (currency, rate_date)
             )
         """))
+        # How to read each bank's CSV export (edited on the Banks page).
+        # config holds the parser settings (columns, separator, date format...).
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS bank_formats (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                bank TEXT NOT NULL,
+                file_type TEXT NOT NULL,
+                config JSONB NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (user_id, bank, file_type)
+            )
+        """))
+
+        # One-time data steps that already ran (see legacy_db/migrations.py).
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                name TEXT PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT NOW()
+            )
+        """))
         conn.commit()
     print("✅ Settings and FX tables ready")

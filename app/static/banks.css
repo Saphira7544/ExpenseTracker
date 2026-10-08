@@ -1,0 +1,65 @@
+/* ---------- Banks page ---------- */
+
+.banks-intro { font-size: 13px; color: #64748b; margin: 4px 0 0; max-width: 760px; }
+
+.formats-table td { vertical-align: middle; }
+.formats-table .col-actions { width: 1%; white-space: nowrap; }
+.formats-table .actions { justify-content: flex-end; }
+.bank-name { font-weight: 700; letter-spacing: 0.02em; }
+.inactive td { opacity: 0.55; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.chip.found { background: #ecfdf5; color: #047857; }
+
+.status-on { color: #16a34a; font-weight: 600; font-size: 12px; }
+.status-off { color: #94a3b8; font-weight: 600; font-size: 12px; }
+
+/* Dialog */
+.bank-dialog { width: 820px; }
+.form-section-title {
+  margin: 18px 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.form-grid textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: 13px ui-monospace, SFMono-Regular, Consolas, monospace;
+  resize: vertical;
+}
+.field-hint { font-weight: 400; color: #94a3b8; font-size: 11px; }
+.checkbox-label { flex-direction: row !important; align-items: center; gap: 8px !important; font-weight: 500 !important; }
+.checkbox-label input { width: auto; }
+.segmented span.opt { background: #fff; }
+.segmented input:checked + span.opt { background: #eef4ff; color: #1d4ed8; font-weight: 600; }
+
+/* "Test with a file" panel */
+.test-panel {
+  padding: 12px 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.test-panel input[type=file] { background: transparent; border: none; padding: 4px 0; }
+.test-status { margin: 8px 0 0; font-size: 13px; }
+.test-status .ok { color: #16a34a; }
+.test-status .bad { color: #dc2626; }
+.test-status .muted { color: #64748b; }
+.preview-table { margin-top: 8px; font-size: 12px; }
+.preview-table th, .preview-table td { padding: 6px 8px; font-size: 12px; }
+.preview-scroll { max-height: 220px; overflow: auto; }

@@ -1,3 +1,6 @@
+# Built-in bank formats, copied once into each user's Banks page (/banks) when
+# their account is set up. After that, formats are edited in the app; changing
+# this file only affects users created later.
 
 UBS_CONFIGS = {
     "debit": {

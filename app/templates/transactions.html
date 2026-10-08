@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<link rel="stylesheet" href="{{ static_url('dialogs.css') }}">
 <link rel="stylesheet" href="{{ static_url('transactions.css') }}">
 
 <div class="page-header">
@@ -107,12 +108,12 @@
 
 <!-- Add / edit transaction dialog -->
 <div class="modal-overlay" id="txModal">
-  <div class="modal-box tx-modal" role="dialog" aria-modal="true" aria-labelledby="txModalTitle">
-    <div class="tx-modal-header">
+  <div class="modal-box dialog-box" role="dialog" aria-modal="true" aria-labelledby="txModalTitle">
+    <div class="dialog-header">
       <h1 id="txModalTitle">Add transaction</h1>
       <button type="button" class="icon-btn small" id="txCloseBtn" title="Close"><i class="fa-solid fa-xmark"></i></button>
     </div>
-    <p class="tx-modal-note" id="txModalNote"></p>
+    <p class="dialog-note" id="txModalNote"></p>
 
     <form id="txForm" novalidate>
       <div class="segmented" role="radiogroup" aria-label="Direction">
@@ -144,7 +145,7 @@
 
       <p class="form-error" id="txError" role="alert"></p>
 
-      <div class="tx-modal-footer">
+      <div class="dialog-footer">
         <button type="button" class="danger" id="txDeleteBtn"><i class="fa-solid fa-trash"></i> Delete</button>
         <div class="spacer"></div>
         <button type="button" class="secondary" id="txCancelBtn">Cancel</button>

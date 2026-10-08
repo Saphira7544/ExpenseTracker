@@ -42,7 +42,7 @@ def read_settings(user: dict = Depends(get_current_user)):
     return {
         **get_settings(user["id"]),
         "exclusions": list_exclusions(user["id"]),
-        "banks": available_banks(),
+        "banks": available_banks(user["id"]),
         "categories": CATEGORIES,
         "available_currencies": SUPPORTED_DISPLAY_CURRENCIES,
     }
@@ -60,7 +60,7 @@ def update_settings(payload: SettingsUpdate, user: dict = Depends(get_current_us
 
 @router.post("/api/settings/exclusions")
 def create_exclusion(payload: ExclusionCreate, user: dict = Depends(get_current_user)):
-    if payload.bank is not None and payload.bank not in available_banks():
+    if payload.bank is not None and payload.bank not in available_banks(user["id"]):
         raise HTTPException(status_code=400, detail="Unknown bank")
     exclusion_id = add_exclusion(user["id"], payload.bank, payload.pattern)
     return {"id": exclusion_id, "bank": payload.bank, "pattern": payload.pattern}

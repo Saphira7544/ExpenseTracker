@@ -1,7 +1,7 @@
 from sqlalchemy import text
 from app.db.session import engine
 from app.core.categories import CATEGORIES
-from parsers.bank_configs import ALL_BANK_CONFIGS
+from app.services import bank_formats
 
 SUPPORTED_DISPLAY_CURRENCIES = ["CHF", "EUR"]
 
@@ -11,8 +11,8 @@ DEFAULT_SETTINGS = {
     "investment_categories": ["Investments"],
 }
 
-def available_banks() -> list[str]:
-    return list(ALL_BANK_CONFIGS.keys())
+def available_banks(user_id: int) -> list[str]:
+    return bank_formats.available_banks(user_id)
 
 def get_settings(user_id: int) -> dict:
     with engine.connect() as conn:

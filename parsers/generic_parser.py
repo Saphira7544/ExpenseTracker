@@ -23,10 +23,11 @@ class GenericParser(BaseParser):
 
     def _parse_file(self, filepath: str, config: Dict[str, Any]) -> List[Transaction]:
 
-        skiprows = self._get_skiprows(read_file_lines(filepath), config.get('header', ''))
+        encoding = config.get('encoding', 'latin1')
+        skiprows = self._get_skiprows(read_file_lines(filepath, encoding), config.get('header', ''))
         sep = config.get('sep', ';')  # Use config or default ;     
         bad_lines = []
-        df = pd.read_csv(filepath, sep=sep, skiprows=skiprows, encoding=config.get('encoding', 'latin1'), dtype=str,
+        df = pd.read_csv(filepath, sep=sep, skiprows=skiprows, encoding=encoding, dtype=str,
                          engine='python', on_bad_lines=lambda line: bad_lines.append(line))  # returns None -> skip
         if bad_lines:
             logger.warning("%s: skipped %d malformed lines", os.path.basename(filepath), len(bad_lines))
@@ -58,17 +59,26 @@ class GenericParser(BaseParser):
 
         
         # Amount/Type
-        if 'debit_col' in config:
+        if config.get('debit_col'):
+            # Separate debit / credit columns
             df[['amount', 'transactionType']] = df.apply(
                 lambda row: self._parse_amount(row, config['debit_col'], config['credit_col']), axis=1, result_type='expand'
             )
-            if config.get('drop_empty_amount', True):
-                df = df[df['transactionType'] != TransactionType.NULL.value]
-
-        else:  # TODO: Make more flexible -> currently assumes single-amount column is always a debit
+        else:
+            # One signed amount column (negative = money out), optionally inverted
+            # for banks that list spending as positive numbers.
             decimal_sep = config.get("decimal_sep", ".")
-            df['amount'] = df[config['amount_col']].apply(lambda x: to_float(x, decimal_sep) if str(x).strip() else None) * -1
-            df['transactionType'] = TransactionType.DEBIT.value
+            sign = -1 if config.get("invert_amount") else 1
+            df['amount'] = df[config['amount_col']].apply(
+                lambda x: to_float(x, decimal_sep) * sign if str(x).strip() else 0.0
+            )
+            df['transactionType'] = df['amount'].apply(
+                lambda a: TransactionType.CREDIT.value if a > 0
+                else TransactionType.DEBIT.value if a < 0
+                else TransactionType.NULL.value
+            )
+        if config.get('drop_empty_amount', True):
+            df = df[df['transactionType'] != TransactionType.NULL.value]
 
         # Other fields
         df['currency'] = self._resolve_currency(df, config)

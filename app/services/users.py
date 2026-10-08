@@ -1,6 +1,7 @@
 from sqlalchemy import text
 from app.db.session import engine
 from app.core.auth import hash_password, verify_password
+from app.services.bank_formats import seed_default_formats
 
 # Columns that are safe to hand to routes and templates (no password_hash).
 PUBLIC_COLUMNS = "id, email, is_approved, is_admin, created_at"
@@ -16,6 +17,12 @@ def create_user(email: str, password: str) -> int:
             {"email": email.lower().strip(), "password_hash": hash_password(password)}
         )
         user_id = result.scalar()
+        # New users start with the built-in bank formats (editable on the Banks page).
+        seed_default_formats(conn, user_id)
+        conn.execute(
+            text("INSERT INTO schema_migrations (name) VALUES (:name) ON CONFLICT DO NOTHING"),
+            {"name": f"seed_bank_formats:user:{user_id}"}
+        )
         conn.commit()
         return user_id
 

@@ -1,537 +1,246 @@
-# ExpenseTracker
+# Expense Tracker
 
-ExpenseTracker is a personal finance web application for importing bank transaction files, categorizing transactions, managing categorization rules, splitting transactions, and tracking net worth. It is built with FastAPI, PostgreSQL, SQLAlchemy, server-rendered Jinja templates, and optional OpenAI-assisted categorization.
+A personal finance app: import your bank statements (CSV), categorize your spending, and keep track of your net worth. It runs on your own computer and stores everything in a PostgreSQL database.
 
-## Features
+**What it does**
 
-- User registration, login, logout, signed session cookies, and password hashing with bcrypt.
-- Import of supported bank transaction files through the upload interface.
-- Bank-format detection and configurable parsing through the `parsers/` package.
-- Rule-based transaction categorization.
-- Optional OpenAI categorization for transactions that remain uncategorized.
-- Transaction filtering by account, category, search term, date range, amount direction, amount range, and split status.
-- Manual category changes, bulk category changes, and reverting a category to automatic categorization.
-- Transaction splitting with a remainder category.
-- User-specific categorization rules and rule re-run preview/apply operations.
-- Dashboard and Monthly analytics that use split parts, net refunds and repayments against their category, and show totals in CHF or EUR (daily ECB rates).
-- A Settings page for per-user import exclusions (per bank), income/investment categories, and display currency.
-- Net-worth accounts, lookup values, valuations, snapshots, liquidity classification, and CHF totals.
-- PostgreSQL persistence for users, transactions, rules, splits, and net-worth data.
+- **Imports bank files** (UBS and CGD out of the box; add other banks on the *Banks* page) and lets you check every row before it's added.
+- **Categorizes transactions** automatically with your own keyword rules, and with OpenAI for anything the rules don't catch.
+- **Splits shared expenses** and counts refunds and repayments against the category they belong to.
+- **Dashboards** for each year and month, in CHF or EUR (other currencies are converted with daily ECB rates).
+- **Net worth**: your accounts, their values over time, and how your money is allocated.
 
-## Technology
+---
 
-- Python 3.13 or newer
-- FastAPI and Uvicorn
-- PostgreSQL
-- SQLAlchemy
-- Jinja2 templates
-- bcrypt and itsdangerous for authentication
-- pandas and parser utilities for transaction imports
-- OpenAI Python SDK for optional LLM categorization
-- Railway-compatible deployment using Uvicorn
+## Contents
 
-## Project structure
+1. [First-time setup](#1-first-time-setup)
+2. [Everyday use](#2-everyday-use)
+3. [Using the app, page by page](#3-using-the-app-page-by-page)
+4. [Settings reference (`.env`)](#4-settings-reference-env)
+5. [Password reset emails](#5-password-reset-emails)
+6. [For development](#6-for-development)
+7. [Hosting it online (optional)](#7-hosting-it-online-optional)
+8. [Troubleshooting](#8-troubleshooting)
 
-```text
-ExpenseTracker/
-├── app/
-│   ├── main.py                 # FastAPI application entrypoint
-│   ├── api/routes/             # HTTP routes and API endpoints
-│   ├── core/                   # Settings, authentication, dependencies
-│   ├── db/                     # SQLAlchemy engine/session setup
-│   ├── services/               # Business logic and database operations
-│   ├── templates/              # Jinja HTML templates
-│   └── static/                 # CSS and static assets
-├── categorizers/               # Rule-based and OpenAI categorization
-├── legacy_db/                  # PostgreSQL table creation and transaction inserts
-├── models/                     # Shared data models
-├── parsers/                    # Bank configuration detection and parsing
-├── storage/                    # Runtime upload storage
-├── utils/                      # Utility functions
-├── requirements.txt            # Python dependencies
-├── .env                        # Local secrets; do not commit
-└── README.md
-```
+---
 
-The application entrypoint is `app/main.py`, and the FastAPI object is named `app`. From the repository root, the application is started with `uvicorn app.main:app`.
+## 1. First-time setup
 
-## Prerequisites
+You need **Python 3.13+**, **PostgreSQL 14+** and **Git**. The commands below are for Windows PowerShell, run from the project folder.
 
-Install the following before setting up the project:
+**1. Get the code and create a virtual environment**
 
-1. Python 3.13 or newer.
-2. PostgreSQL 14 or newer, either locally or through a hosted provider such as Railway.
-3. Git.
-4. A PostgreSQL client such as `psql`, DBeaver, or TablePlus if you need to inspect or migrate data.
-5. An OpenAI API key if LLM categorization is enabled.
-
-On Windows, make sure `python` and `git` are available in PowerShell. On macOS/Linux, use the corresponding shell commands shown below.
-
-## Clone the repository
-
-Replace the placeholder URL with the repository's actual GitHub URL:
-
-```bash
+```powershell
 git clone https://github.com/Saphira7544/ExpenseTracker.git
-cd <your-repository>
+cd ExpenseTracker
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-If the repository is private, authenticate with GitHub before cloning or use an SSH URL:
+**2. Create a database** called `expense_tracker` in PostgreSQL (in pgAdmin: right-click *Databases* > *Create*).
 
-```bash
-git clone git@github.com:Saphira7544/ExpenseTracker.git
-```
-
-## Create a virtual environment
-
-Create the environment from the repository root:
-
-### Windows PowerShell
-
-```powershell
-py -3.13 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-If PowerShell blocks activation for the current user, run PowerShell as your normal user and execute:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-```
-
-Then activate the environment again.
-
-### macOS/Linux
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-When the environment is active, your terminal normally shows `(.venv)` at the beginning of the prompt.
-
-## Install dependencies
-
-Upgrade packaging tools and install the project dependencies:
-
-```bash
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-The production dependency list must include `psycopg2-binary`, not only `psycopg2`, unless the deployment image explicitly installs PostgreSQL client libraries. `psycopg2-binary` avoids the common Railway error involving a missing `libpq.so.5` library.
-
-After installation, verify the important packages:
-
-```bash
-python -c "import fastapi, sqlalchemy, psycopg2; print('Dependencies OK')"
-```
-
-## Configure PostgreSQL
-
-The application uses PostgreSQL. It does not create a local SQLite database file. The table-creation functions in `legacy_db/` connect to PostgreSQL using the credentials in the environment and create the required tables at application startup.
-
-Create a PostgreSQL database locally or provision one through a hosted provider. Then create a local `.env` file in the repository root. Do not commit this file.
-
-Example `.env`:
+**3. Create a file called `.env`** in the project folder:
 
 ```dotenv
-DB_USER=postgres
-DB_PASSWORD=your-local-password
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=expense_tracker
+DB_USER=postgres
+DB_PASSWORD=your-postgres-password
 
-UPLOAD_DIR=storage/uploads
-APP_SECRET_KEY=replace-with-a-long-random-secret
-SESSION_COOKIE_NAME=expense_tracker_session
-SESSION_MAX_AGE_DAYS=14
-COOKIE_SECURE=true
-ENABLE_LLM_CATEGORIZATION=true
-OPENAI_API_KEY=your-openai-api-key
+# Required: a long random string. Create one with:
+#   .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(48))"
+APP_SECRET_KEY=paste-it-here
+
+# Optional: automatic categorization with OpenAI (costs a little per upload)
+OPENAI_API_KEY=your-openai-key
 ```
 
-`APP_SECRET_KEY` is required: the app refuses to start without it (or with the placeholder value). Generate one with:
+`.env` holds passwords: never commit it or share it. All the other settings are in [section 4](#4-settings-reference-env).
 
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-`COOKIE_SECURE=true` marks the session cookie HTTPS-only. Browsers still accept it on `http://localhost` / `http://127.0.0.1`; set it to `false` only if you access a non-HTTPS host other than localhost. Sessions expire after `SESSION_MAX_AGE_DAYS`.
-
-Use the exact database names, host, port, username, and password for your PostgreSQL installation. For a Railway deployment, set these values in Railway Variables instead of committing them to `.env`.
-
-### Database URL behavior
-
-If `DATABASE_URL` is set (Railway provides it), it is used as-is. Otherwise the URL is built from the `DB_*` variables; special characters in the password are escaped automatically. The app refuses to start if neither is configured.
-
-### Secret handling
-
-Never commit any of the following:
-
-- `.env` files.
-- PostgreSQL passwords or full connection strings.
-- OpenAI API keys.
-- Session or application secret keys.
-- Database dumps containing sensitive personal or financial data.
-
-Use GitHub secret scanning and rotate a credential immediately if it has been exposed.
-
-## Initialize the database
-
-Start the application once after PostgreSQL and the environment variables are configured. The startup lifespan creates the following tables:
-
-- `users`.
-- `transactions`.
-- `transaction_splits`.
-- `category_rules`.
-- `networth_institutions`.
-- `networth_asset_categories`.
-- `networth_account_types`.
-- `networth_currencies`.
-- `networth_liquidity_statuses`.
-- `networth_accounts`.
-- `networth_valuations`.
-- `networth_snapshots`.
-
-The startup process is implemented in `app/main.py` and calls the table-creation functions from `legacy_db/`. Table creation is idempotent because it uses `CREATE TABLE IF NOT EXISTS`.
-
-On databases created before transactions were keyed per user, startup also migrates the `transactions` primary key from `(transactionId)` to `(user_id, transactionId)`. This refuses to run while any transaction has a `NULL` `user_id`. Back up the database before the first start after upgrading.
-
-For a clean production database, let the application create the tables rather than manually creating a second, differently named schema.
-
-## Run locally
-
-From the repository root with the virtual environment active:
-
-```bash
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Open the displayed address in a browser:
-
-```text
-http://127.0.0.1:8000
-```
-
-The root page requires authentication. Unauthenticated visitors should be sent to `/login`. Other useful pages include:
-
-- `/login` — sign in.
-- `/register` — request an account.
-- `/upload` — upload bank files.
-- `/transactions` — view and manage transactions.
-- `/rules` — manage categorization rules.
-- `/networth` — view net worth data.
-- `/networth/config` — configure net-worth lookup values and accounts.
-
-The interactive API documentation is available at `/docs` when the app is running.
-
-## Run as a local app (Windows)
-
-To use the tracker on this PC without opening a terminal or activating the virtual environment:
+**4. Install the app on this PC**
 
 ```powershell
 .\.venv\Scripts\python.exe -m localapp install
 ```
 
-This adds **Start > Expense Tracker**. It starts the app in the background (no console window) if it isn't running, then opens **http://expenses.localhost** (browsers send `*.localhost` to this PC; if port 80 is taken it uses `:8500`). The server only listens on this PC, never on your network.
+This adds **Expense Tracker** to the Start menu. Open it: the app starts and your browser opens **http://expenses.localhost**. The database tables are created automatically the first time.
 
-In the app, **Settings > App** (admin only) has:
+**5. Create your account**
 
-- **Start automatically when I sign in to Windows**: adds or removes a shortcut in your Startup folder.
-- **Restart**: reloads the code (and installs `requirements.txt` if it changed). When Python files change, an *Update ready* button also appears in the sidebar.
-- **Stop**: shuts it down until you open it again from the Start menu.
-
-Logs are in `logs/server.log`. To remove the shortcuts: `.\.venv\Scripts\python.exe -m localapp uninstall`. Developing with `uvicorn app.main:app --reload` (port 8000) still works alongside it.
-
-## User approval
-
-New registrations are created as unapproved accounts. The login route refuses access until `is_approved` is true.
-
-The first administrator has to be set directly in PostgreSQL:
+Click *Register*. New accounts need approval, so make your first account an approved admin once, in PostgreSQL (pgAdmin's query tool or `psql`):
 
 ```sql
-UPDATE users
-SET is_approved = TRUE, is_admin = TRUE
-WHERE email = 'your@email.example';
+UPDATE users SET is_approved = TRUE, is_admin = TRUE WHERE email = 'you@example.com';
 ```
 
-After that, an admin can approve other users without SQL, e.g. from `/docs` while logged in:
+Then sign in. Other people who register can be approved by an admin without SQL: open `/docs` while signed in and use `POST /admin/users/{user_id}/approve` (`GET /admin/pending-users` lists who's waiting).
 
-- `GET /admin/pending-users` lists accounts waiting for approval.
-- `POST /admin/users/{user_id}/approve` approves one.
+**6. Before your first upload**, see [Settings](#settings) to set up import exclusions.
 
-Grant administrator access only to trusted accounts.
+---
 
-## Password reset by email
+## 2. Everyday use
 
-The login page has **Forgot password?**. It emails a link that works once, for 30 minutes; only a hash of the link's token is stored, the page never reveals whether an email has an account, requests are rate-limited, and resetting signs out every existing session.
+- **Open it** from **Start > Expense Tracker**, or go to **http://expenses.localhost**. If the app isn't running, the Start-menu icon starts it first (no window opens, it runs in the background).
+- **Start it automatically**: tick *Start Expense Tracker automatically when I sign in to Windows* in **Settings > App**. If it's off, it only starts when you open it from the Start menu.
+- **Restart** (Settings > App) loads new code after the project files change. An *Update ready · Restart* button also appears in the sidebar when that happens. **Stop** shuts it down until you open it again.
+- It's only reachable from this computer, not from other devices on your network.
+- If something goes wrong, the details are in `logs/server.log`.
+- To remove the Start-menu and startup shortcuts: `.\.venv\Scripts\python.exe -m localapp uninstall`.
 
-Configure outgoing email in `.env` (Gmail shown; any SMTP server works):
+> The address `expenses.localhost` needs no setup: browsers send any `*.localhost` name to your own computer. If another program is already using port 80, the app uses `http://expenses.localhost:8500` instead.
+
+---
+
+## 3. Using the app, page by page
+
+### Upload Files
+Drop one or more bank CSV files and click **Review upload**. Nothing is added yet: a dialog shows, per file, how many rows were found, excluded, **already imported** and **new**, and lists the new rows with their suggested category (from your rules, or the AI). Untick any row you don't want, then **Import**.
+
+### Transactions
+Search and filter everything you've imported.
+- **Pencil**: edit any transaction (imported ones too). **Add transaction** adds one by hand, e.g. cash.
+- **Category picker** in each row for quick changes; select several rows to change their category or **delete** them in one go.
+- **Scissors**: split a transaction across categories (e.g. a shared grocery bill). Undo it with the arrow icon.
+- A category you set by hand is marked *manual* and rules won't change it; the wand icon hands it back to the rules.
+
+### Rules
+Keyword rules: "description contains `migros` → Groceries". The longest matching keyword wins. *Preview* shows what re-running your rules would change before you apply it.
+
+### Dashboard and Monthly
+Yearly and monthly views of income, spending, investing and your savings rate, in CHF or EUR (switch at the top). How the numbers work:
+- **Income**: the categories you mark as income in Settings (by default *Salary*).
+- **Invested**: money going into investment categories (by default *Investments*). It counts as saved, not spent.
+- **Expenses**: everything else, **netted per category**. Money coming back (a refund, or someone paying you back) lowers that category instead of counting as income. For a bill you share: split it so the other person's half goes to *Transfers*, and tag their repayment *Transfers* too; the two cancel out.
+- **Ignored**: the *Internal* category (moving money between your own accounts, currency exchanges) isn't counted at all.
+- Split transactions count as their parts. Each category always has the same color.
+
+### Net Worth
+Your accounts, grouped by bank, with their latest value. Record a new value with the trend-arrow icon (for ETFs/stocks, enter quantity and price; *Use ECB rate* fills in the exchange rate). **Record snapshot** saves today's total as a point on your net-worth trend. *Net Worth Config* holds the lists you pick from (banks, asset categories, currencies…), and *Net Worth Analytics* shows the trend and how your money is allocated.
+
+### Settings
+- **Import exclusions**: text that marks rows to skip when importing, per bank, e.g. transfers between your own accounts or card top-ups (`Payment to card`).
+- **How categories count**: which categories are income, investments, or ignored.
+- **Display currency**, and **App** (start at sign-in, restart, stop).
+
+### Banks
+How each bank's CSV file is read. To add a bank, click **Add bank format** and pick a sample export under *Test with a sample file*: the file's columns are suggested in each field and you see the parsed transactions before saving.
+
+---
+
+## 4. Settings reference (`.env`)
+
+Edit `.env` in the project folder, then restart the app (Settings > App > Restart).
+
+| Setting | Needed? | What it's for |
+|---|---|---|
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Yes (or `DATABASE_URL`) | Your PostgreSQL database. |
+| `DATABASE_URL` | Instead of the above | One connection string, e.g. from a hosting provider. |
+| `APP_SECRET_KEY` | **Yes** | Protects sign-in sessions. The app won't start without it. |
+| `OPENAI_API_KEY` | Optional | AI categorization of rows your rules don't match. |
+| `ENABLE_LLM_CATEGORIZATION` | Optional | `false` to turn the AI off (default `true`). |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Optional | Sending password reset emails (see below). |
+| `APP_BASE_URL` | Optional | The app's address used in emailed links. Set automatically by the Start-menu app. |
+| `SESSION_MAX_AGE_DAYS` | Optional | How long you stay signed in (default 14). |
+| `UPLOAD_DIR` | Optional | Where uploaded files are kept (default `storage/uploads`). |
+
+---
+
+## 5. Password reset emails
+
+*Forgot password?* on the sign-in page emails a link to choose a new password. The link works once, for 30 minutes, and resetting signs you out everywhere else.
+
+To send the emails, add your mail account to `.env`. For Gmail:
 
 ```dotenv
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=you@gmail.com
-SMTP_PASSWORD=your-16-character-app-password
+SMTP_PASSWORD=your-app-password
 SMTP_FROM=you@gmail.com
-# Address used in the emailed link (the local app sets this automatically):
-# APP_BASE_URL=http://expenses.localhost
 ```
 
-For Gmail, `SMTP_PASSWORD` is an **app password** (Google Account > Security > 2-Step Verification > App passwords), not your normal password. Restart the app after editing `.env`.
+`SMTP_PASSWORD` is a Gmail **app password**, not your normal password: Google Account > Security > 2-Step Verification > App passwords.
 
-Until email is configured, the reset link is written to the server log (`logs/server.log` for the local app) instead of being sent.
+**No email set up yet?** The reset link is written to `logs/server.log` instead. Open that file and copy the link from the last *Password reset link* line.
 
-## Configure OpenAI categorization
+---
 
-The upload service imports the OpenAI categorizer and can use it for transactions that remain uncategorized after rule-based categorization. Set:
+## 6. For development
 
-```dotenv
-ENABLE_LLM_CATEGORIZATION=true
-OPENAI_API_KEY=your-api-key
+Run with automatic reload while you edit (in parallel with the Start-menu app is fine, they use different ports):
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-To disable LLM categorization for a local test environment, set:
+Then open http://localhost:8000. Every API endpoint is documented at `/docs`.
 
-```dotenv
-ENABLE_LLM_CATEGORIZATION=false
+**Tests** (no database, internet or API keys needed):
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-The OpenAI key should be stored only in `.env` locally and in the hosting provider's secret/environment-variable manager in production. Never place it directly in `categorizers/openAI.py` or commit it to Git.
-
-LLM calls may incur usage costs. Set usage limits and monitor the associated OpenAI account.
-
-## Upload and categorize transactions
-
-1. Register an account.
-2. Approve the account in PostgreSQL if approval is enabled.
-3. Log in.
-4. Open `/upload`.
-5. Select one or more supported bank files.
-6. Upload the files.
-7. The application detects the bank format, parses the transactions, attaches them to the current user, applies rules, optionally sends remaining descriptions to OpenAI, and inserts the transactions into PostgreSQL.
-8. Review and correct categories from `/transactions`.
-
-Before the first upload, add your import exclusions on `/settings` (e.g. transfers between your own accounts, card top-ups); rows whose description contains one of them are skipped. The upload results show how many rows were excluded.
-
-Uploaded files (max 10 MB each) are saved under `UPLOAD_DIR/<user id>/<random id>/`, which defaults to `storage/uploads`. Treat uploaded bank files as sensitive personal data. In a production deployment, use persistent storage if uploaded files must survive redeployments.
-
-## How the dashboards calculate totals
-
-Dashboard (`/`) and Monthly (`/monthly`) work on *lines*: every normal transaction, plus each part of a split transaction in place of the original.
-
-- **Income**: lines in the income categories chosen on `/settings` (default: Salary).
-- **Invested**: money going into the investment categories (default: Investments). It counts as saved, not spent.
-- **Expenses**: every other category, netted per category. Money coming back (a refund, or someone paying you back) reduces that category instead of counting as income. For shared purchases: split the bill so the other person's share goes to e.g. `Transfers`, then categorize their repayment as `Transfers` too, and it cancels out.
-- **Currency**: all amounts are shown in the selected currency (CHF or EUR, switchable on each page). Other currencies are converted at the ECB reference rate of each transaction's date, fetched from [frankfurter.app](https://frankfurter.app) and cached in the `fx_rates` table. If no rate is available, the page says so and leaves those transactions out.
-
-## Main API areas
-
-The application exposes authenticated API routes for the following operations:
-
-### Transactions
-
-- `GET /api/transactions` — list transactions with filters and pagination.
-- `GET /api/transactions/count` — count filtered transactions.
-- `GET /api/transactions/filters` — retrieve available categories and accounts.
-- `PATCH /api/transactions/{transaction_id}` — manually update a category.
-- `PATCH /api/transactions/bulk-category` — update several categories.
-- `POST /api/transactions/{transaction_id}/split` — split a transaction.
-- `GET /api/transactions/{transaction_id}/split` — retrieve split rows.
-- `DELETE /api/transactions/{transaction_id}/split` — remove splits.
-- `POST /api/transactions/{transaction_id}/revert-auto` — mark a category as automatic again.
-
-### Rules
-
-- `GET /api/rules` — list the current user's rules.
-- `POST /api/rules` — create a rule.
-- `DELETE /api/rules/{rule_id}` — delete a rule.
-- `GET /api/rules/preview-rerun` — preview rule-based changes.
-- `POST /api/rules/apply-rerun` — apply rule-based changes.
-
-### Uploads
-
-- `POST /api/uploads` — upload and process one or more transaction files.
-
-### Net worth
-
-- `GET /api/networth/dashboard` — retrieve accounts, valuations, snapshots, and lookup data.
-- `/api/networth/lookups` — manage institutions, asset categories, account types, currencies, and liquidity statuses.
-- `/api/networth/accounts` — manage net-worth accounts.
-- `/api/networth/valuations` — manage account valuations.
-- `/api/networth/snapshots` — manage historical snapshots.
-- `POST /api/networth/compute-snapshot` — compute current totals from the latest valuations.
-
-All application data queries are scoped to the authenticated user's ID.
-
-## Testing and development checks
-
-Run the automated tests (no database, network or API keys needed):
-
-```bash
-python -m pip install -r requirements-dev.txt
-python -m pytest
-```
-
-Also run a syntax check across the project:
-
-```bash
-python -m compileall app categorizers legacy_db models parsers utils
-```
-
-Start the application locally and verify:
-
-1. The process starts without import or database errors.
-2. `/login` and `/register` load.
-3. An approved user can log in and reach `/`.
-4. Static CSS loads from `/static`.
-5. A small test transaction file can be uploaded.
-6. Manual category changes persist after refreshing.
-7. Rules and net-worth data are isolated between users.
-
-For production changes, test database migrations against a copy of the database first. The current startup table creation is not a replacement for a versioned migration system.
-
-## Railway deployment
-
-### 1. Create or connect the project
-
-1. Push the repository to GitHub.
-2. Create a Railway project and deploy the repository as a service.
-3. Provision a PostgreSQL service in the same Railway project.
-4. Link the application service and PostgreSQL service if you want to use Railway variable references.
-
-### 2. Configure Railway variables
-
-Add the database variables required by `app/core/config.py`:
+**Where things are**
 
 ```text
-DB_USER
-DB_PASSWORD
-DB_HOST
-DB_PORT
-DB_NAME
+app/
+  main.py            app entry point and page routes
+  api/routes/        API endpoints (one file per area)
+  services/          the actual logic: imports, analytics, net worth, exchange rates...
+  templates/         HTML pages
+  static/            CSS and JavaScript
+  core/              settings, sign-in, categories and their colors
+categorizers/        rule-based and OpenAI categorization
+parsers/             reading bank CSV files (bank_configs.py = the starting bank formats)
+legacy_db/           creates the database tables and runs one-time data updates at startup
+localapp/            the Start-menu app: launcher, background server, shortcuts
+tests/               automated tests
+logs/                server log (not in git)
+storage/uploads/     uploaded bank files (not in git)
 ```
 
-Alternatively, reference Railway's `DATABASE_URL` variable from the PostgreSQL service; when it is set the `DB_*` variables are not needed.
+**Database changes** happen automatically when the app starts (new tables and columns are added; existing data is kept). Back up the database before updating to a new version:
 
-Also add:
-
-```text
-APP_SECRET_KEY=<long-random-production-secret>
-SESSION_COOKIE_NAME=expense_tracker_session
-UPLOAD_DIR=storage/uploads
-ENABLE_LLM_CATEGORIZATION=true
-OPENAI_API_KEY=<production-openai-key>
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -U postgres --format=custom --file=expense_tracker_backup.dump expense_tracker
 ```
 
-Do not paste secrets into source files or commit them to GitHub.
+(Change `18` to your PostgreSQL version. To restore: `pg_restore.exe` from the same folder, with `--dbname=expense_tracker`.)
 
-### 3. Set the start command
+---
 
-Because `main.py` is inside `app/`, use:
+## 7. Hosting it online (optional)
 
-```bash
-PYTHONPATH=. uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
+The app can also run on a hosting service such as Railway:
 
-The `$PORT` value is supplied by Railway. Do not hard-code port `8000` in the production start command. Railway's public networking configuration must target the port on which Uvicorn is actually listening.
+1. Push the code to GitHub and create a Railway project from it, plus a PostgreSQL service.
+2. In Railway's *Variables*, reference the database's `DATABASE_URL` and add `APP_SECRET_KEY` (a new one), `OPENAI_API_KEY`, the `SMTP_*` settings and `APP_BASE_URL` (your Railway address).
+3. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 
-### 4. Verify the deployment
+To copy your local data across, back it up with `pg_dump` (above) and load it with `pg_restore.exe --no-owner --dbname="<railway DATABASE_URL>" expense_tracker_backup.dump`. Keep both backups until you've checked the copy. Hosted servers often lose uploaded files on redeploy; that's fine, everything that matters is in the database.
 
-Healthy logs should include messages indicating that the tables are ready and that Uvicorn is running on `0.0.0.0:$PORT`.
+---
 
-If the deployment fails, diagnose the first meaningful exception in the logs:
+## 8. Troubleshooting
 
-- `No module named ...` usually indicates a missing committed package/file or an incorrect module path.
-- `invalid literal for int() ... None` usually indicates a missing `DB_PORT` or another malformed database variable.
-- `libpq.so.5` usually indicates the wrong PostgreSQL driver package or a deployment image missing PostgreSQL client libraries; use `psycopg2-binary` in the requirements unless you intentionally configure system libraries.
-- `Missing credentials` from OpenAI means `OPENAI_API_KEY` is not available to the Railway service.
-- `502 Bad Gateway` commonly means the service is not listening on Railway's assigned `$PORT`, or the service has not been publicly exposed.
+| Problem | What to do |
+|---|---|
+| The Start-menu app doesn't open | A message box points to `logs/server.log`; the error is at the end of that file. |
+| `APP_SECRET_KEY is not set` | Add it to `.env` (see [setup step 3](#1-first-time-setup)). |
+| Can't connect to the database | Check PostgreSQL is running (Windows *Services*: `postgresql-x64-…`) and the `DB_*` values in `.env`. |
+| Upload says *no bank format recognises this file* | Open *Banks*, edit or add the format, and use *Test with a sample file* to see what doesn't match. |
+| Rows you don't want keep getting imported | Add the text that identifies them under *Settings > Import exclusions*. |
+| *No exchange rate available* on the dashboards | Exchange rates are downloaded from the ECB; check the internet connection and reload. |
+| Forgot your password | *Forgot password?* on the sign-in page. Without email set up, the link is in `logs/server.log`. |
+| AI categorization doesn't happen | Check `OPENAI_API_KEY` in `.env` and that `ENABLE_LLM_CATEGORIZATION` isn't `false`, then restart. |
 
-### 5. Generate a domain
+---
 
-After the service is healthy, generate a Railway public domain for the web service. Open the generated HTTPS address in a browser and use `/register` or `/login`.
+**Privacy.** This app handles your bank data. Keep `.env`, uploaded files and database backups out of git (they already are, via `.gitignore`), and keep regular database backups. Transaction descriptions are sent to OpenAI only when AI categorization is on.
 
-Railway's filesystem may be ephemeral between deployments. PostgreSQL is the persistent location for application records; do not rely on files under `storage/` as the only copy of uploaded documents.
-
-## Database migration
-
-The application uses PostgreSQL locally and in production, so a PostgreSQL-to-PostgreSQL migration is preferable to copying a SQLite file.
-
-A safe migration workflow is:
-
-1. Back up the local database.
-2. Confirm the Railway database schema exists.
-3. Register the production user, or decide whether to migrate the local user record and password hash.
-4. Export the required local tables with `pg_dump` or a database GUI.
-5. Import into Railway PostgreSQL in foreign-key order.
-6. Verify row counts and ownership IDs.
-7. Verify manual transaction categories and split rows.
-8. Verify net-worth accounts, valuations, and snapshots.
-9. Only remove or overwrite data after checking the imported copy.
-
-The core table order is generally:
-
-```text
-users
-category_rules
-transactions
-transaction_splits
-networth_institutions
-networth_asset_categories
-networth_account_types
-networth_currencies
-networth_liquidity_statuses
-networth_accounts
-networth_valuations
-networth_snapshots
-```
-
-Because rows contain `user_id` references, changing user IDs during migration can detach data from the intended account. Preserve IDs where possible, or update every dependent table consistently in a transaction. Always back up both databases before importing.
-
-For a full PostgreSQL database dump, use the PostgreSQL client tools rather than SQLite commands:
-
-```bash
-pg_dump --format=custom --file=expense_tracker.dump "$LOCAL_DATABASE_URL"
-pg_restore --no-owner --clean --if-exists --dbname="$RAILWAY_DATABASE_URL" expense_tracker.dump
-```
-
-Use the connection strings appropriate for your environment. Do not put either connection string into this README, Git history, screenshots, or issue reports.
-
-If you use Railway's private network, a local Railway CLI tunnel can be used for a database GUI. Keep the tunnel open while DBeaver or another client is connected.
-
-## Backups and privacy
-
-This application processes financial data, uploaded bank files, and authentication data. Recommended practices:
-
-- Keep PostgreSQL backups enabled.
-- Maintain an additional encrypted backup before migrations.
-- Do not commit uploaded files or database dumps.
-- Use strong, unique database and application secrets.
-- Rotate credentials after sharing access with another person or tool.
-- Restrict administrator access.
-- Review OpenAI data and usage settings before sending transaction descriptions for categorization.
-- Use HTTPS for production access.
-
-## Troubleshooting
-
-### The browser shows `{"detail":"Not authenticated"}`
-
-The requested page is protected by the session dependency. Use `/login`. If the root page should redirect unauthenticated visitors, ensure the root route catches the authentication exception and returns a redirect to `/login`.
-
-### The app cannot import `legacy_db`
-
-Confirm that `legacy_db/` is committed to GitHub and is not ignored as an entire directory. It contains Python database code, not merely a database file. Add an empty `legacy_db/__init__.py` if your packaging/import setup requires it, then deploy again from the repository root.
-
-### The app starts but cannot connect to PostgreSQL
-
-Check all five `DB_*` variables, the host/port visibility, the database password, and whether the selected host is private-only. From a local machine, use a Railway tunnel or a secured public connection for database tools. Never expose the connection string in a public repository.
-
-### OpenAI categorization is unavailable
-
-Check that `OPENAI_API_KEY` is set in the same environment as the running service and that `ENABLE_LLM_CATEGORIZATION` is configured as intended. If the key is rotated, update the local `.env` or Railway variable and restart/redeploy the service.
-
-## License
-
-No license has been specified yet. Until a license is added to this repository, assume that the source is not available for redistribution or commercial reuse without the author's permission.
+**License.** No license yet: all rights reserved by the author.

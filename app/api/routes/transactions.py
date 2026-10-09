@@ -175,8 +175,9 @@ def split_transaction(
     if not original:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    if any(s.amount <= 0 for s in payload.splits):
-        raise HTTPException(status_code=400, detail="Split amounts must be positive")
+    # Negative parts go the other way (e.g. your share of something the other person paid).
+    if any(abs(s.amount) < 0.005 for s in payload.splits):
+        raise HTTPException(status_code=400, detail="Split amounts can't be zero")
 
     total_split = sum(s.amount for s in payload.splits)
     if total_split > abs(original["amount"]) + 0.01:

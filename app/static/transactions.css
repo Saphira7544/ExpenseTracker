@@ -62,3 +62,30 @@
 @media (max-width: 640px) {
   .tx-actions select { width: 120px; }
 }
+
+/* Expandable split rows */
+.tx-table .col-expand { width: 1%; padding-left: 6px; padding-right: 0; }
+.expand-btn {
+  width: 26px; height: 26px; border: none; border-radius: 6px; background: none;
+  color: #64748b; cursor: pointer;
+}
+.expand-btn:hover { background: #f1f5f9; color: #0f172a; }
+.expand-btn i { transition: transform 0.15s; transform: rotate(-90deg); }
+.expand-btn[aria-expanded="true"] i { transform: rotate(0deg); }
+.tx-table tr.expanded td { border-bottom-color: transparent; }
+.tx-table tr.split-detail td { background: #f8fafc; padding-top: 5px; padding-bottom: 5px; border-bottom: none; }
+.tx-table tr.split-detail.last td { padding-bottom: 10px; border-bottom: 1px solid #eee; }
+.tx-table tr.split-detail:hover { background: none; }
+.tx-table tr.split-detail td:nth-child(3) { border-left: 2px solid #cbd5e1; }   /* guide line down the left of the parts */
+.split-part-note { max-width: 420px; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+
+/* Split dialog */
+.split-dialog { width: 620px; }
+.split-totals { font-size: 13px; color: #475569; margin: 0 0 12px; }
+.split-dialog .split-row { display: grid; grid-template-columns: 170px 110px minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+.split-remainder { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: #475569; }
+.split-remainder select { width: auto; }
+@media (max-width: 640px) {
+  .split-dialog .split-row { grid-template-columns: 1fr 1fr auto; }
+  .split-dialog .split-note { grid-column: 1 / -1; }
+}

@@ -14,3 +14,6 @@ package.json
 
 # Local app runtime (server log, pid/port file)
 logs/
+
+# Editor settings (contain local DB credentials)
+.vscode/

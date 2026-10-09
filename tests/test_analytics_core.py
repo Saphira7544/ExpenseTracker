@@ -38,6 +38,15 @@ def test_split_transaction_is_replaced_by_its_parts_with_parent_sign():
     assert "Split" not in set(lines["category"])
 
 
+def test_negative_split_parts_go_the_other_way():
+    # +100 repayment: +130 groceries they owed me, -30 my share of a dinner they paid
+    lines = core.build_lines(
+        tx([("r", "2026-03-31", "Repayment", "Split", 100.0, "CHF")]),
+        splits([("r", "Groceries", 130.0), ("r", "Restaurants/Bars", -30.0)]),
+    )
+    assert dict(zip(lines["category"], lines["amount"])) == {"Groceries": 130.0, "Restaurants/Bars": -30.0}
+
+
 def test_split_without_rows_is_kept_rather_than_lost():
     lines = core.build_lines(tx([("t1", "2026-03-01", "x", "Split", -10.0, "CHF")]), splits([]))
     assert list(lines["amount"]) == [-10.0]
@@ -84,28 +93,60 @@ def test_trend_groups_by_period():
     assert core.trend(lines, "%Y")[0]["expenses"] == -200.0
 
 
-def test_category_trend_keeps_top_categories_and_folds_the_rest():
-    lines = prepared(SHARED_MONTH, SHARED_SPLITS)
-    data = core.category_trend(lines, "%Y-%m", top_n=1)
-    assert data["periods"] == ["2026-03"]
-    assert data["series"]["Groceries"]["2026-03"] == 90.0
-    assert data["series"]["Other"]["2026-03"] == 50.0  # Shopping 50 + Transfers 0
+def test_category_heatmap_has_every_month_and_nets_each_category():
+    rows = SHARED_MONTH + [("t8", "2026-05-02", "Coop", "Groceries", -60.0, "CHF")]
+    data = core.category_heatmap(prepared(rows, SHARED_SPLITS))
+    assert data["periods"] == ["2026-03", "2026-04", "2026-05"]   # April has no spending but keeps its column
+    by_cat = {r["category"]: r for r in data["rows"]}
+    assert [r["category"] for r in data["rows"]] == ["Groceries", "Shopping", "Transfers"]   # biggest first
+    assert by_cat["Groceries"]["values"] == {"2026-03": 90.0, "2026-05": 60.0}
+    assert by_cat["Groceries"]["average"] == 50.0
+    assert by_cat["Transfers"]["values"] == {}          # paid back in full: nets to zero
+    assert data["total"] == {"2026-03": 140.0, "2026-05": 60.0}
 
 
-def test_top_merchants_and_daily_spend():
-    lines = prepared(SHARED_MONTH, SHARED_SPLITS)
-    merchants = core.top_merchants(lines)
-    assert merchants[0] == {"description": "Migros", "total": 100.0, "occurrences": 2}
-    daily = {d["date"]: d["total"] for d in core.daily_spend(lines)}
-    assert daily["2026-03-05"] == 100.0
-    assert daily["2026-03-31"] == -50.0  # repayment day shows as money coming back
+def test_recategorizing_out_of_other_changes_the_heatmap():
+    rows = [
+        ("a", "2026-03-01", "Coop", "Groceries", -300.0, "CHF"),
+        ("b", "2026-03-02", "Misc 1", "Other", -200.0, "CHF"),
+        ("c", "2026-03-03", "Misc 2", "Other", -100.0, "CHF"),
+    ]
+    before = {r["category"]: r["total"] for r in core.category_heatmap(prepared(rows))["rows"]}
+    assert before["Other"] == 300.0
+    rows[2] = ("c", "2026-03-03", "Misc 2", "Entertainment", -100.0, "CHF")   # requalified
+    after = {r["category"]: r["total"] for r in core.category_heatmap(prepared(rows))["rows"]}
+    assert after == {"Groceries": 300.0, "Other": 200.0, "Entertainment": 100.0}
+
+
+def test_spending_lines_keep_split_notes_and_sign():
+    lines = core.build_lines(
+        tx(SHARED_MONTH),
+        pd.DataFrame([("t2", "Groceries", 50.0, "my half"), ("t2", "Transfers", 50.0, None)],
+                     columns=core.SPLIT_COLUMNS + ["note"]),
+    )
+    lines["value"] = lines["amount"]
+    out = core.spending_lines(core.classify(lines, ("Salary",), ("Investments",)))
+    assert [l["date"] for l in out] == sorted(l["date"] for l in out)
+    assert {"description": "Migros", "category": "Groceries", "spent": 50.0, "note": "my half"}.items()         <= next(l for l in out if l["category"] == "Groceries" and l["description"] == "Migros").items()
+    assert next(l for l in out if l["description"] == "Zalando refund")["spent"] == -30.0   # money back
+    assert all(l["description"] not in ("Salary ACME", "Broker") for l in out)
+
+
+def test_category_history_covers_the_months_before():
+    rows = SHARED_MONTH + [("t8", "2025-12-02", "Coop", "Groceries", -60.0, "CHF"),
+                           ("t9", "2026-04-02", "Coop", "Groceries", -70.0, "CHF")]   # after: not included
+    h = core.category_history(prepared(rows, SHARED_SPLITS), "2026-03", months=4)
+    assert h["months"] == ["2025-12", "2026-01", "2026-02", "2026-03"]
+    assert h["by_category"]["Groceries"] == {"2025-12": 60.0, "2026-03": 90.0}
+    assert h["total"] == {"2025-12": 60.0, "2026-03": 140.0}
 
 
 def test_empty_data():
     lines = prepared([])
     assert core.totals(lines)["income"] == 0.0
     assert core.trend(lines, "%Y") == []
-    assert core.category_trend(lines, "%Y") == {"periods": [], "series": {}}
+    assert core.category_heatmap(lines) == {"periods": [], "rows": [], "total": {}}
+    assert core.spending_lines(lines) == []
     assert core.month_summary(lines, 0)["biggest_expense_description"] is None
 
 
@@ -121,7 +162,7 @@ def test_ignored_categories_are_left_out_of_every_total():
     assert t["invested"] == 11000.0         # 1000 + 10000, counted once
     assert t["savings_rate"] == pytest.approx(97.2)
     assert "Internal" not in {r["category"] for r in core.category_breakdown(lines)}
-    assert all(r["description"] != "Exchanged to EUR" for r in core.top_merchants(lines))
+    assert all(r["description"] != "Exchanged to EUR" for r in core.spending_lines(lines))
 
     # without the ignored role the same exchange would count as spending
     unignored = core.classify(with_internal, ("Salary",), ("Investments",), ())

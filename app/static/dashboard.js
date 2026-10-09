@@ -108,31 +108,82 @@ function renderOverviewSavingsRateChart(trend) {
     }));
 }
 
-function renderOverviewCategoryTrendChart(data) {
-    destroyChart('overviewCategoryTrend');
-    const ctx = document.getElementById('overviewCategoryTrendChart');
-    // "Other" (everything outside the top categories) is drawn last, in grey.
-    const categories = Object.keys(data.series).sort((a, b) => (a === 'Other') - (b === 'Other'));
-    registerChart('overviewCategoryTrend', new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: data.periods.map(formatPeriodLabel),
-            datasets: categories.map(cat => ({
-                label: cat,
-                data: data.periods.map(p => data.series[cat][p] || 0),
-                borderColor: categoryColor(cat),
-                backgroundColor: categoryColor(cat) + '33',
-                fill: true,
-                tension: 0.3,
-            })),
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } },
-            scales: { y: { stacked: true, beginAtZero: true }, x: { stacked: true } },
-        },
-    }));
+// ---------- Category x month heatmap ----------
+
+const MONTH_LABEL = new Intl.DateTimeFormat(undefined, { month: 'short' });
+
+function compactMoney(v) {
+    const a = Math.abs(v);
+    const text = a >= 10000 ? `${Math.round(a / 1000)}k`
+        : a >= 1000 ? `${(a / 1000).toFixed(1)}k`
+        : `${Math.round(a)}`;
+    return v < 0 ? `−${text}` : text;
+}
+
+function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// One cell, shaded with the row's colour as strongly as this month compares
+// with the row's biggest month. Money back (negative) gets green text, no fill.
+function heatCell(value, rowMax, rgb, month, category) {
+    const label = `${category || 'All categories'} · ${formatPeriodLabel(month)}`;
+    if (!value || Math.abs(value) < 0.5) {
+        return `<td class="hm-cell hm-empty" title="${esc(label)}: nothing">·</td>`;
+    }
+    const href = category
+        ? `/monthly?month=${month}&category=${encodeURIComponent(category)}`
+        : `/monthly?month=${month}`;
+    const title = `${label}: ${value < 0 ? 'got back ' : ''}${fmtMoney(Math.abs(value))} (open in Monthly)`;
+    if (value < 0) {
+        return `<td class="hm-cell hm-back"><a href="${href}" title="${esc(title)}">${compactMoney(value)}</a></td>`;
+    }
+    const alpha = 0.10 + 0.80 * (rowMax > 0 ? value / rowMax : 0);
+    const text = alpha > 0.55 ? '#fff' : '#0f172a';
+    return `<td class="hm-cell" style="background:rgba(${rgb.join(',')},${alpha.toFixed(2)});color:${text}">` +
+           `<a href="${href}" title="${esc(title)}">${compactMoney(value)}</a></td>`;
+}
+
+function renderCategoryHeatmap(data) {
+    const table = document.getElementById('categoryHeatmap');
+    if (!data.periods.length) {
+        table.innerHTML = '<tr><td class="small-muted">No spending yet.</td></tr>';
+        return;
+    }
+    const months = data.periods;
+    const head = months.map((m, i) => {
+        const [y, mm] = m.split('-').map(Number);
+        const name = MONTH_LABEL.format(new Date(y, mm - 1, 1));
+        const year = i === 0 || mm === 1 ? `<span class="hm-year">${y}</span>` : '<span class="hm-year">&nbsp;</span>';
+        return `<th class="hm-month" scope="col">${esc(name)}${year}</th>`;
+    }).join('');
+
+    const row = (category, values, total, average, colour) => {
+        const positives = Object.values(values).filter(v => v > 0);
+        const rowMax = positives.length ? Math.max(...positives) : 0;
+        const rgb = hexToRgb(colour);
+        const name = category
+            ? `<th scope="row" class="hm-name"><span class="category-swatch" style="background:${colour}"></span>${esc(category)}</th>`
+            : '<th scope="row" class="hm-name">All categories</th>';
+        const classes = [category ? '' : 'hm-total', total < 0 ? 'hm-net-back' : ''].join(' ').trim();
+        return `<tr class="${classes}">${name}` +
+            months.map(m => heatCell(values[m] || 0, rowMax, rgb, m, category)).join('') +
+            `<td class="hm-num">${fmtMoney(average)}</td><td class="hm-num"><strong>${fmtMoney(total)}</strong></td></tr>`;
+    };
+
+    const grand = Object.values(data.total).reduce((s, v) => s + v, 0);
+    table.innerHTML =
+        `<thead><tr><th class="hm-name" scope="col">Category</th>${head}` +
+        '<th class="hm-num" scope="col">Avg / month</th><th class="hm-num" scope="col">Total</th></tr></thead>' +
+        '<tbody>' +
+        row(null, data.total, grand, grand / months.length, '#475569') +
+        data.rows.map(r => row(r.category, r.values, r.total, r.average, categoryColor(r.category))).join('') +
+        '</tbody>';
+
+    // Show the most recent months first.
+    const wrap = document.getElementById('categoryHeatmapWrap');
+    wrap.scrollLeft = wrap.scrollWidth;
 }
 
 function populateYearSelect(years, selected) {
@@ -157,7 +208,7 @@ async function loadOverview(year) {
     renderOverviewSummaryCards(data.summary);
     renderOverviewIncomeExpensesChart(data.income_expenses_trend);
     renderOverviewSavingsRateChart(data.savings_rate_trend);
-    renderOverviewCategoryTrendChart(data.spending_by_category_trend);
+    renderCategoryHeatmap(data.category_heatmap);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

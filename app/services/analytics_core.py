@@ -33,21 +33,25 @@ LINE_COLUMNS = ["transaction_id", "date", "description", "category", "amount", "
 def build_lines(transactions: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFrame:
     """Replace each split transaction by its split rows.
 
-    Split amounts are stored as positive numbers; they take the sign of the
-    original transaction. A transaction marked Split with no split rows
-    (shouldn't happen) is kept as-is so its amount isn't lost.
+    A part's amount is relative to the original: positive goes the same way
+    as the transaction, negative the other way (e.g. on a repayment from a
+    friend, "-40 Travel" is your share of a trip they paid). A transaction
+    marked Split with no split rows (shouldn't happen) is kept as-is.
+    Lines get a `note`: the split part's note, if any.
     """
     is_split = transactions["category"] == SPLIT
     has_rows = transactions["transaction_id"].isin(splits["transaction_id"])
     expand = is_split & has_rows
 
-    plain = transactions.loc[~expand, LINE_COLUMNS]
+    plain = transactions.loc[~expand, LINE_COLUMNS].assign(note=None)
     parents = transactions.loc[expand, ["transaction_id", "date", "description", "currency", "amount"]]
     parents = parents.rename(columns={"amount": "parent_amount"})
     parts = splits.merge(parents, on="transaction_id", how="inner")
-    parts["amount"] = np.sign(parts["parent_amount"].astype(float)) * parts["amount"].astype(float).abs()
+    parts["amount"] = np.sign(parts["parent_amount"].astype(float)) * parts["amount"].astype(float)
+    if "note" not in parts:
+        parts["note"] = None
 
-    lines = pd.concat([plain, parts[LINE_COLUMNS]], ignore_index=True)
+    lines = pd.concat([plain, parts[LINE_COLUMNS + ["note"]]], ignore_index=True)
     lines["category"] = lines["category"].fillna(UNCATEGORIZED)
     lines["date"] = pd.to_datetime(lines["date"])
     lines["amount"] = lines["amount"].astype(float)
@@ -120,25 +124,34 @@ def category_breakdown(lines: pd.DataFrame) -> list[dict]:
     return [{"category": c, "total": _r(v)} for c, v in spend.items()]
 
 
-def category_trend(lines: pd.DataFrame, fmt: str, top_n: int = 6) -> dict:
+def category_heatmap(lines: pd.DataFrame) -> dict:
+    """Net spend per category per month, for a category x month grid.
+
+    `periods` is every month from the first to the last one with spending (so
+    the columns are evenly spaced), `rows` one per spending category, biggest
+    total first, with only the non-zero months in `values`. A value (or a
+    whole row, e.g. Transfers full of repayments) is negative when more came
+    back than was spent. `total` is the net spend per month.
+    """
     spending = _spending(lines)
     if spending.empty:
-        return {"periods": [], "series": {}}
-    period = periods(spending, fmt)
-    all_periods = sorted(period.unique())
+        return {"periods": [], "rows": [], "total": {}}
+    period = periods(spending, "%Y-%m")
+    all_periods = [str(p) for p in pd.period_range(period.min(), period.max(), freq="M")]
 
-    totals_by_cat = (-spending.groupby("category")["value"].sum()).sort_values(ascending=False)
-    top = [c for c, v in totals_by_cat.head(top_n).items() if v > 0]
-
-    series = {c: {p: 0.0 for p in all_periods} for c in top}
-    series["Other"] = {p: 0.0 for p in all_periods}
-    per = -spending.groupby([period, spending["category"]])["value"].sum()
-    for (p, cat), v in per.items():
-        key = cat if cat in series and cat != "Other" else "Other"
-        series[key][p] += float(v)
-
-    series = {c: {p: _r(v) for p, v in s.items()} for c, s in series.items()}
-    return {"periods": all_periods, "series": series}
+    rows = []
+    per = -spending.groupby([spending["category"], period])["value"].sum()
+    for category, by_period in per.groupby(level=0):
+        total = float(by_period.sum())
+        rows.append({
+            "category": category,
+            "total": _r(total),
+            "average": _r(total / len(all_periods)),
+            "values": {p: _r(v) for (_, p), v in by_period.items() if abs(v) >= 0.005},
+        })
+    rows.sort(key=lambda r: -r["total"])
+    total = -spending.groupby(period)["value"].sum()
+    return {"periods": all_periods, "rows": rows, "total": {p: _r(v) for p, v in total.items()}}
 
 
 def month_summary(lines: pd.DataFrame, txn_count: int) -> dict:
@@ -158,20 +171,37 @@ def month_summary(lines: pd.DataFrame, txn_count: int) -> dict:
     return summary
 
 
-def top_merchants(lines: pd.DataFrame, limit: int = 8) -> list[dict]:
-    spending = _spending(lines)
-    if spending.empty:
-        return []
-    grouped = spending.groupby("description")["value"].agg(["sum", "count"])
-    grouped["total"] = -grouped["sum"]
-    grouped = grouped[grouped["total"] > 0].sort_values("total", ascending=False).head(limit)
+def spending_lines(lines: pd.DataFrame) -> list[dict]:
+    """Every spending line, oldest first. `spent` is positive for money out and
+    negative for money back (a refund, or someone paying you back)."""
+    spending = _spending(lines).sort_values(["date", "transaction_id"], kind="stable")
     return [
-        {"description": d, "total": _r(row["total"]), "occurrences": int(row["count"])}
-        for d, row in grouped.iterrows()
+        {
+            "transaction_id": r.transaction_id,
+            "date": r.date.date().isoformat(),
+            "description": r.description,
+            "category": r.category,
+            "spent": _r(-r.value),
+            "amount": _r(r.amount),
+            "currency": r.currency,
+            "note": r.note if isinstance(r.note, str) and r.note else None,
+        }
+        for r in spending.itertuples(index=False)
     ]
 
 
-def daily_spend(lines: pd.DataFrame) -> list[dict]:
+def category_history(lines: pd.DataFrame, month: str, months: int = 13) -> dict:
+    """Net spend per category for `month` and the months before it (months
+    without spending are simply absent from a category's values)."""
+    end = pd.Period(month, freq="M")
+    window = [str(end - i) for i in range(months - 1, -1, -1)]
     spending = _spending(lines)
-    daily = -spending.groupby(spending["date"].dt.date)["value"].sum()
-    return [{"date": d.isoformat(), "total": _r(v)} for d, v in daily.sort_index().items()]
+    period = periods(spending, "%Y-%m")
+    spending, period = spending[period.isin(window)], period[period.isin(window)]
+
+    per = -spending.groupby([spending["category"], period])["value"].sum()
+    by_category: dict[str, dict] = {}
+    for (category, p), v in per.items():
+        by_category.setdefault(category, {})[p] = _r(v)
+    total = -spending.groupby(period)["value"].sum()
+    return {"months": window, "by_category": by_category, "total": {p: _r(v) for p, v in total.items()}}

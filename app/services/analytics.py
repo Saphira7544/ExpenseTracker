@@ -19,7 +19,7 @@ def _load_frames(user_id: int) -> tuple[pd.DataFrame, pd.DataFrame]:
             WHERE user_id = :user_id
         """), {"user_id": user_id}).mappings().all()
         split_rows = conn.execute(text("""
-            SELECT transactionId AS transaction_id, category, amount
+            SELECT transactionId AS transaction_id, category, amount, note
             FROM transaction_splits
             WHERE user_id = :user_id
         """), {"user_id": user_id}).mappings().all()
@@ -27,7 +27,7 @@ def _load_frames(user_id: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     tx = pd.DataFrame([dict(r) for r in tx_rows], columns=core.TX_COLUMNS)
     tx["date"] = pd.to_datetime(tx["date"])
     tx["currency"] = tx["currency"].astype(str).str.strip().str.upper()
-    splits = pd.DataFrame([dict(r) for r in split_rows], columns=core.SPLIT_COLUMNS)
+    splits = pd.DataFrame([dict(r) for r in split_rows], columns=core.SPLIT_COLUMNS + ["note"])
     return tx, splits
 
 
@@ -86,7 +86,7 @@ def get_overview_bundle(user_id: int, year: str | None = None, currency: str | N
         "summary": core.totals(scoped),
         "income_expenses_trend": trend,
         "savings_rate_trend": core.savings_rate_trend(trend),
-        "spending_by_category_trend": core.category_trend(scoped, fmt, 6),
+        "category_heatmap": core.category_heatmap(scoped),
         **meta,
     }
 
@@ -104,7 +104,7 @@ def get_monthly_bundle(user_id: int, month: str | None = None, currency: str | N
     if not selected_month:
         return {
             "available_months": [], "selected_month": None, "month_summary": None,
-            "category_breakdown": [], "top_merchants": [], "daily_spend": [], **meta,
+            "lines": [], "history": None, **meta,
         }
 
     scoped = lines[core.periods(lines, "%Y-%m") == selected_month]
@@ -112,9 +112,10 @@ def get_monthly_bundle(user_id: int, month: str | None = None, currency: str | N
         "available_months": available_months,
         "selected_month": selected_month,
         "month_summary": core.month_summary(scoped, txn_count=int((tx_months == selected_month).sum())),
-        "category_breakdown": core.category_breakdown(scoped),
-        "top_merchants": core.top_merchants(scoped),
-        "daily_spend": core.daily_spend(scoped),
+        # Every spending line of the month: the page filters and aggregates them
+        # itself, so clicking a category or a day updates every chart instantly.
+        "lines": core.spending_lines(scoped),
+        "history": core.category_history(lines, selected_month),
         **meta,
     }
 

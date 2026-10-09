@@ -5,8 +5,13 @@
     margin-top: 20px;
 }
 
+.charts-grid-wide-left {
+    grid-template-columns: 2fr 1fr;
+}
+
 @media (max-width: 1100px) {
-    .charts-grid { grid-template-columns: 1fr; }
+    .charts-grid,
+    .charts-grid-wide-left { grid-template-columns: 1fr; }
 }
 
 .chart-card {
@@ -17,14 +22,17 @@
     max-height: 260px;
 }
 
-#top-merchants-table td:last-child,
-#top-merchants-table th:last-child {
-    text-align: right;
+.pie-wrap {
+    position: relative;
+    height: 270px;
 }
 
-#category-table td:last-child,
-#category-table th:last-child {
-    text-align: right;
+.pie-wrap canvas {
+    max-height: none;
+}
+
+.chart-hint {
+    margin: -6px 0 10px;
 }
 
 .category-swatch {
@@ -33,6 +41,181 @@
     height: 12px;
     border-radius: 3px;
 }
+
+th.numeric { text-align: right; }
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: #2563eb;
+    cursor: pointer;
+}
+.link-btn:hover { text-decoration: underline; }
+.link-btn:focus-visible { outline: 2px solid #4f8ef7; outline-offset: 2px; border-radius: 4px; }
+
+.money-back { color: #15803d !important; }
+
+/* ---------- Focus bar ---------- */
+.focus-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 40px;
+    margin: 4px 0 14px;
+    font-size: 13px;
+}
+
+.focus-bar.hint { color: #94a3b8; }
+.focus-bar.hint i { margin-right: 6px; }
+
+.focus-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.focus-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px 6px 11px;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    background: #fff;
+    color: #0f172a;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+.focus-chip .category-swatch { width: 10px; height: 10px; }
+.focus-chip .fa-xmark { color: #94a3b8; }
+.focus-chip:hover { border-color: #94a3b8; }
+.focus-chip:hover .fa-xmark { color: #0f172a; }
+.focus-chip:focus-visible { outline: 2px solid #4f8ef7; outline-offset: 2px; }
+
+.focus-clear {
+    background: none;
+    border: none;
+    color: #64748b;
+    font: inherit;
+    cursor: pointer;
+    padding: 6px 4px;
+}
+.focus-clear:hover { color: #0f172a; text-decoration: underline; }
+.focus-clear kbd {
+    font: 600 10px/1 inherit;
+    padding: 2px 5px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    color: #64748b;
+    margin-left: 4px;
+}
+
+/* ---------- Focused summary card ---------- */
+.summary-card.focus-card::before { background: var(--focus-colour); height: 4px; }
+
+.vs-up { color: #dc2626; font-weight: 600; }
+.vs-down { color: #15803d; font-weight: 600; }
+.vs-same { color: #64748b; }
+.vs-new { color: #64748b; font-style: italic; }
+
+/* ---------- Category table ---------- */
+#category-table tbody tr[data-category] { cursor: pointer; transition: opacity 0.15s ease; }
+#category-table tbody tr[data-category]:hover td { background: #f8fafc; }
+#category-table tbody tr.selected td { background: #eff6ff; font-weight: 700; }
+#category-table tbody tr.selected td:first-child { box-shadow: inset 3px 0 0 #2563eb; }
+#category-table tbody tr.dimmed { opacity: 0.55; }
+#category-table tbody tr:focus-visible { outline: 2px solid #4f8ef7; outline-offset: -2px; }
+#category-table td.share { color: #64748b; }
+#category-table td,
+#category-table th { white-space: nowrap; }
+
+/* ---------- Transactions list ---------- */
+.lines-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.lines-header h2 { margin: 0; }
+
+.segmented {
+    display: inline-flex;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.segment {
+    padding: 6px 12px;
+    border: none;
+    background: #fff;
+    color: #334155;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.segment + .segment { border-left: 1px solid #d1d5db; }
+.segment.selected { background: #4f8ef7; color: #fff; }
+.segment:focus-visible { outline: 2px solid #4f8ef7; outline-offset: -2px; }
+
+#lines-table { table-layout: auto; }
+#lines-table .col-date { white-space: nowrap; width: 1%; }
+#lines-table .col-date .link-btn { color: #334155; font-weight: 600; }
+#lines-table tr.on-day td { background: #f8fafc; }
+#lines-table td.numeric { white-space: nowrap; }
+#lines-table .col-open { width: 1%; }
+#lines-table .icon-btn { width: 30px; height: 30px; }
+#lines-table .icon-btn i { font-size: 12px; }
+#lines-table .cat-btn .badge { cursor: pointer; }
+
+.line-desc {
+    max-width: 520px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.line-note {
+    max-width: 520px;
+    margin-top: 2px;
+    font-size: 12px;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.line-note i { font-size: 10px; margin-right: 3px; }
+
+.original-amount {
+    display: block;
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.lines-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+}
+.lines-footer:empty { display: none; }
 
 /* Year dropdown + month buttons */
 .month-buttons {
@@ -67,4 +250,30 @@
     color: #cbd5e1;
     background: #f8fafc;
     cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
+    .line-desc, .line-note { max-width: 180px; }
+    #lines-table th:nth-child(3), #lines-table td:nth-child(3) { display: none; }
+}
+
+/* Long bank descriptions must never widen the page. */
+.charts-grid > * { min-width: 0; }
+#summary-cards .summary-card { min-width: 160px; max-width: 100%; }
+#summary-cards .sub-value {
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.table-scroll { overflow-x: auto; }
+#category-table th,
+#category-table td { padding-left: 8px; padding-right: 8px; }
+#category-table td:first-child,
+#category-table th:first-child { width: 12px; padding-right: 0; }
+
+#summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }

@@ -28,9 +28,14 @@
         <canvas id="overviewSavingsRateChart"></canvas>
     </div>
 
-    <div class="card chart-card" style="grid-column: 1 / -1;">
-        <h2><i class="fa-solid fa-layer-group"></i> Spending by Category Over Time</h2>
-        <canvas id="overviewCategoryTrendChart"></canvas>
+    <div class="card" style="grid-column: 1 / -1;">
+        <h2><i class="fa-solid fa-table-cells"></i> Spending by Category per Month</h2>
+        <p class="small-muted heatmap-help">The darker the cell, the bigger that month was <em>for that
+            category</em>. <span class="hm-legend-back">Green</span> means more came back than was spent.
+            Click a cell to open that month in Monthly, focused on that category.</p>
+        <div class="heatmap-wrap" id="categoryHeatmapWrap">
+            <table class="heatmap" id="categoryHeatmap"></table>
+        </div>
     </div>
 </div>
 

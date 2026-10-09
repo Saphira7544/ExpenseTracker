@@ -76,6 +76,7 @@
   <table class="tx-table">
     <thead>
       <tr>
+        <th class="col-expand"><span class="sr-only">Show split</span></th>
         <th class="col-select"><input type="checkbox" id="selectAllCheckbox" aria-label="Select all on this page"></th>
         <th class="col-edit"><span class="sr-only">Edit</span></th>
         <th>Date</th>
@@ -157,19 +158,25 @@
 </div>
 
 <div class="modal-overlay" id="splitModal">
-  <div class="modal-box">
-    <h1>Split Transaction</h1>
-    <p>Total: <span id="splitTotal"></span> — <span id="splitAllocated">0</span> allocated</p>
-    <div id="splitRows"></div>
-    <button class="secondary" id="addSplitRow">+ Add row</button>
-    <p style="font-size:12px; color:#6b7280; margin-top:8px;">Leftover amount will be auto-filed as:</p>
-    <select id="remainderCategory">
-    </select>
-    <div style="margin-top:16px; display:flex; gap:8px;">
-      <button class="primary" id="saveSplitBtn">Save split</button>
-      <button class="secondary" id="cancelSplitBtn">Cancel</button>
+  <div class="modal-box dialog-box split-dialog" role="dialog" aria-modal="true" aria-labelledby="splitTitle">
+    <div class="dialog-header">
+      <h1 id="splitTitle">Split transaction</h1>
+      <button type="button" class="icon-btn small" id="splitCloseBtn" title="Close"><i class="fa-solid fa-xmark"></i></button>
     </div>
-    <p id="splitError" style="color:#dc2626; margin-top:8px;"></p>
+    <p class="dialog-note" id="splitDescription"></p>
+    <p class="split-totals">Total <strong id="splitTotal"></strong> · allocated <strong id="splitAllocated">0.00</strong> · left <strong id="splitLeft"></strong></p>
+    <div id="splitRows"></div>
+    <button class="secondary" id="addSplitRow"><i class="fa-solid fa-plus"></i> Add part</button>
+    <p class="small-muted" style="margin:6px 0 0;">A negative amount goes the other way, e.g. on a repayment, your share of something the other person paid.</p>
+    <label class="split-remainder">Whatever is left goes to
+      <select id="remainderCategory"></select>
+    </label>
+    <p id="splitError" class="form-error" role="alert"></p>
+    <div class="dialog-footer">
+      <div class="spacer"></div>
+      <button class="secondary" id="cancelSplitBtn">Cancel</button>
+      <button class="primary" id="saveSplitBtn">Save split</button>
+    </div>
   </div>
 </div>
 
@@ -188,6 +195,7 @@ let currentOffset = 0;
 let lastRowCount = 0;
 let totalCount = 0;
 let selectedIds = new Set();
+const COLUMN_COUNT = 9;          // expand, select, edit, date, description, account, category, amount, actions
 let rowsById = new Map();     // transactions on the current page, for the dialogs
 let filterData = { accounts: [], categories: [], currencies: [] };
 
@@ -239,15 +247,24 @@ function rowHtml(tx) {
          ${options(CATEGORIES, tx.category)}
        </select>`;
 
+  // Split rows: scissors edits the split, the arrow undoes it.
   const splitAction = isSplit
-    ? `<button class="icon-btn small danger undo-split-btn" data-id="${id}" title="Undo split"><i class="fa-solid fa-arrow-rotate-left"></i></button>`
+    ? `<button class="icon-btn small edit-split-btn" data-id="${id}" title="Edit split"><i class="fa-solid fa-scissors"></i></button>`
     : `<button class="icon-btn small split-btn" data-id="${id}" title="Split across categories"><i class="fa-solid fa-scissors"></i></button>`;
 
-  const revertAction = tx.is_manual_category && !isSplit
-    ? `<button class="icon-btn small revert-btn" data-id="${id}" title="Let rules decide the category again"><i class="fa-solid fa-wand-magic-sparkles"></i></button>`
-    : `<span class="icon-slot"></span>`;
+  const thirdAction = isSplit
+    ? `<button class="icon-btn small danger undo-split-btn" data-id="${id}" title="Undo split"><i class="fa-solid fa-arrow-rotate-left"></i></button>`
+    : tx.is_manual_category
+      ? `<button class="icon-btn small revert-btn" data-id="${id}" title="Let rules decide the category again"><i class="fa-solid fa-wand-magic-sparkles"></i></button>`
+      : `<span class="icon-slot"></span>`;
+
+  const expand = isSplit
+    ? `<button class="expand-btn" data-id="${id}" aria-expanded="${expandedIds.has(tx.transactionid)}" title="Show the split">
+         <i class="fa-solid fa-angle-down"></i></button>`
+    : "";
 
   return `
+    <td class="col-expand">${expand}</td>
     <td class="col-select"><input type="checkbox" class="row-checkbox" data-id="${id}" aria-label="Select"></td>
     <td class="col-edit">
       <button class="icon-btn small edit-btn" data-id="${id}" title="Edit transaction"><i class="fa-solid fa-pen"></i></button>
@@ -262,7 +279,7 @@ function rowHtml(tx) {
       ${tx.is_manual_category && !isSplit ? '<span class="manual-tag" title="Category set by hand; rules leave it alone">manual</span>' : ''}
     </td>
     <td class="col-amount ${amountClass}">${esc(formatAmount(tx.amount))}<span class="tx-currency">${esc(tx.currency)}</span></td>
-    <td class="col-actions"><div class="tx-actions">${categoryControl}${splitAction}${revertAction}</div></td>
+    <td class="col-actions"><div class="tx-actions">${categoryControl}${splitAction}${thirdAction}</div></td>
   `;
 }
 
@@ -310,11 +327,13 @@ async function loadTransactions() {
 
   rows.forEach(tx => {
     const tr = document.createElement("tr");
+    tr.dataset.id = tx.transactionid;
     tr.innerHTML = rowHtml(tx);
     tbody.appendChild(tr);
+    if (expandedIds.has(tx.transactionid)) showSplitParts(tx);   // stays open after a refresh
   });
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No transactions match these filters.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${COLUMN_COUNT}" class="empty-state">No transactions match these filters.</td></tr>`;
   }
 
   document.querySelectorAll(".cat-select").forEach(sel => {
@@ -350,12 +369,19 @@ document.getElementById("txBody").addEventListener("click", async (e) => {
   if (!btn) return;
   const id = btn.dataset.id;
 
-  if (btn.classList.contains("edit-btn")) {
+  if (btn.classList.contains("expand-btn")) {
+    toggleSplitParts(rowsById.get(id));
+  } else if (btn.classList.contains("edit-split-btn")) {
+    openSplitDialog(rowsById.get(id), await fetchSplitParts(id, true));
+  } else if (btn.classList.contains("edit-btn")) {
     openTxDialog(rowsById.get(id));
   } else if (btn.classList.contains("split-btn")) {
     openSplitDialog(rowsById.get(id));
   } else if (btn.classList.contains("undo-split-btn")) {
+    if (!confirm("Undo this split? The transaction goes back to a single category.")) return;
     await fetch(`/api/transactions/${encodeURIComponent(id)}/split`, { method: "DELETE" });
+    expandedIds.delete(id);
+    splitCache.delete(id);
     loadTransactions();
   } else if (btn.classList.contains("revert-btn")) {
     await fetch(`/api/transactions/${encodeURIComponent(id)}/revert-auto`, { method: "POST" });
@@ -519,47 +545,147 @@ document.addEventListener("keydown", (e) => {
 
 // ---------- Split dialog ----------
 
-function addSplitRow() {
+const REMAINDER_NOTE = "Auto remainder";   // set by the server on the leftover part
+
+function addSplitRow(part = null) {
   const row = document.createElement("div");
   row.className = "split-row";
   row.innerHTML = `
-    <select class="split-category">${options(CATEGORIES)}</select>
-    <input type="number" class="split-amount" placeholder="Amount" step="0.01">
+    <select class="split-category" aria-label="Category">${options(CATEGORIES, part?.category)}</select>
+    <input type="number" class="split-amount" placeholder="Amount" step="0.01" aria-label="Amount"
+           value="${part ? Number(part.amount).toFixed(2) : ""}">
+    <input type="text" class="split-note" placeholder="Note (optional)" aria-label="Note" value="${esc(part?.note || "")}">
+    <button type="button" class="icon-btn small danger remove-part" title="Remove this part"><i class="fa-solid fa-xmark"></i></button>
   `;
   document.getElementById("splitRows").appendChild(row);
   row.querySelector(".split-amount").addEventListener("input", updateAllocatedDisplay);
+  row.querySelector(".remove-part").onclick = () => { row.remove(); updateAllocatedDisplay(); };
+  return row;
 }
 
 function updateAllocatedDisplay() {
   const amounts = Array.from(document.querySelectorAll(".split-amount")).map(i => parseFloat(i.value) || 0);
   const sum = amounts.reduce((a, b) => a + b, 0);
-  document.getElementById("splitAllocated").textContent = sum.toFixed(2);
+  const left = currentSplitAmount - sum;
+  document.getElementById("splitAllocated").textContent = formatAmount(sum);
+  const leftEl = document.getElementById("splitLeft");
+  leftEl.textContent = formatAmount(left);
+  leftEl.style.color = left < -0.005 ? "#dc2626" : "";
 }
 
-function openSplitDialog(tx) {
+// existingParts: the current split when editing (null for a new split).
+function openSplitDialog(tx, existingParts = null) {
   currentSplitId = tx.transactionid;
   currentSplitAmount = Math.abs(parseFloat(tx.amount));
-  document.getElementById("splitTotal").textContent = currentSplitAmount.toFixed(2);
-  document.getElementById("splitAllocated").textContent = "0.00";
+  const editing = Array.isArray(existingParts) && existingParts.length > 0;
+  document.getElementById("splitTitle").textContent = editing ? "Edit split" : "Split transaction";
+  document.getElementById("splitDescription").textContent = `${formatDate(tx.date)} · ${tx.description}`;
+  document.getElementById("splitTotal").textContent = `${formatAmount(currentSplitAmount)} ${tx.currency}`;
   document.getElementById("splitRows").innerHTML = "";
   document.getElementById("splitError").textContent = "";
-  addSplitRow();
+
+  const remainder = editing ? existingParts.find(p => p.note === REMAINDER_NOTE) : null;
+  const parts = editing ? existingParts.filter(p => p !== remainder) : [];
+  document.getElementById("remainderCategory").value = remainder ? remainder.category : "Other";
+  if (parts.length) parts.forEach(p => addSplitRow(p)); else addSplitRow();
+
+  updateAllocatedDisplay();
   document.getElementById("splitModal").style.display = "flex";
+  document.querySelector("#splitRows .split-amount").focus();
 }
 
-document.getElementById("addSplitRow").onclick = addSplitRow;
-document.getElementById("cancelSplitBtn").onclick = () => {
+function closeSplitDialog() {
   document.getElementById("splitModal").style.display = "none";
-};
+}
+
+document.getElementById("addSplitRow").onclick = () => addSplitRow().querySelector(".split-amount").focus();
+document.getElementById("cancelSplitBtn").onclick = closeSplitDialog;
+document.getElementById("splitCloseBtn").onclick = closeSplitDialog;
+document.getElementById("splitModal").addEventListener("mousedown", e => { if (e.target.id === "splitModal") closeSplitDialog(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && document.getElementById("splitModal").style.display === "flex") closeSplitDialog();
+});
+
+// ---------- Viewing a split (expand row) ----------
+
+const expandedIds = new Set();    // stay open across refreshes
+const splitCache = new Map();     // transactionId -> parts
+
+async function fetchSplitParts(id, fresh = false) {
+  if (!fresh && splitCache.has(id)) return splitCache.get(id);
+  const res = await fetch(`/api/transactions/${encodeURIComponent(id)}/split`);
+  const parts = res.ok ? await res.json() : [];
+  splitCache.set(id, parts);
+  return parts;
+}
+
+// One sub-row per part, lined up with the table: note under Description,
+// category under Category, amount under Amount.
+function splitPartRows(tx, parts) {
+  if (!parts.length) {
+    return `<tr class="split-detail last"><td colspan="3"></td><td colspan="${COLUMN_COUNT - 3}" class="small-muted">No parts found for this split.</td></tr>`;
+  }
+  const sign = tx.amount < 0 ? -1 : 1;
+  return parts.map((p, i) => {
+    const amount = sign * Number(p.amount);   // negative parts go the other way
+    const note = p.note === REMAINDER_NOTE ? '<span class="small-muted">what was left</span>' : esc(p.note || "");
+    return `
+      <tr class="split-detail${i === parts.length - 1 ? " last" : ""}">
+        <td colspan="3"></td>
+        <td class="split-guide"></td>
+        <td><div class="split-part-note">${note}</div></td>
+        <td></td>
+        <td>${categoryBadge(p.category)}</td>
+        <td class="col-amount ${amount >= 0 ? "amount-positive" : "amount-negative"}">${esc(formatAmount(amount))}<span class="tx-currency">${esc(tx.currency)}</span></td>
+        <td></td>
+      </tr>`;
+  }).join("");
+}
+
+function removeSplitRows(row) {
+  while (row.nextElementSibling?.classList.contains("split-detail")) row.nextElementSibling.remove();
+}
+
+async function showSplitParts(tx) {
+  const row = document.querySelector(`#txBody tr[data-id="${CSS.escape(tx.transactionid)}"]`);
+  if (!row || row.nextElementSibling?.classList.contains("split-detail")) return;
+  row.classList.add("expanded");
+  row.insertAdjacentHTML("afterend",
+    `<tr class="split-detail last"><td colspan="3"></td><td colspan="${COLUMN_COUNT - 3}" class="small-muted">Loading…</td></tr>`);
+  const parts = await fetchSplitParts(tx.transactionid);
+  removeSplitRows(row);
+  if (expandedIds.has(tx.transactionid)) row.insertAdjacentHTML("afterend", splitPartRows(tx, parts));
+}
+
+function toggleSplitParts(tx) {
+  const id = tx.transactionid;
+  const row = document.querySelector(`#txBody tr[data-id="${CSS.escape(id)}"]`);
+  const btn = row.querySelector(".expand-btn");
+  if (expandedIds.has(id)) {
+    expandedIds.delete(id);
+    row.classList.remove("expanded");
+    removeSplitRows(row);
+    btn.setAttribute("aria-expanded", "false");
+  } else {
+    expandedIds.add(id);
+    btn.setAttribute("aria-expanded", "true");
+    showSplitParts(tx);
+  }
+}
 
 document.getElementById("saveSplitBtn").onclick = async () => {
   const rows = document.querySelectorAll("#splitRows > div");
   const splits = Array.from(rows).map(r => ({
     category: r.querySelector(".split-category").value,
-    amount: parseFloat(r.querySelector(".split-amount").value || 0),
-  })).filter(s => s.amount > 0);
+    amount: Math.round(parseFloat(r.querySelector(".split-amount").value || 0) * 100) / 100,
+    note: r.querySelector(".split-note").value.trim() || null,
+  })).filter(s => s.amount !== 0);
 
   const sum = splits.reduce((a, s) => a + s.amount, 0);
+  if (!splits.length) {
+    document.getElementById("splitError").textContent = "Add at least one part with an amount.";
+    return;
+  }
   if (sum > currentSplitAmount + 0.01) {
     document.getElementById("splitError").textContent = `Allocated ${sum.toFixed(2)} exceeds total ${currentSplitAmount.toFixed(2)}`;
     return;
@@ -574,7 +700,9 @@ document.getElementById("saveSplitBtn").onclick = async () => {
   });
 
   if (res.ok) {
-    document.getElementById("splitModal").style.display = "none";
+    closeSplitDialog();
+    splitCache.delete(currentSplitId);      // show the new parts
+    expandedIds.add(currentSplitId);        // and open the row so you see the result
     loadTransactions();
   } else {
     const err = await res.json();
@@ -683,9 +811,19 @@ document.getElementById("resetFilterBtn").onclick = () => {
   loadTransactions();
 };
 
+// Links from other pages (e.g. Monthly's "Open in Transactions") prefill the filters.
+function applyFiltersFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const fields = { search: "searchInput", category: "categoryFilter", date_from: "dateFrom", date_to: "dateTo" };
+  Object.entries(fields).forEach(([param, id]) => {
+    if (params.has(param)) document.getElementById(id).value = params.get(param);
+  });
+}
+
 loadCategories().then(async () => {
     initCategorySelects();
     await loadFilters();
+    applyFiltersFromUrl();
     loadTransactions();
 });
 

@@ -15,3 +15,100 @@
 .chart-card canvas {
     max-height: 300px;
 }
+/* ---------- Category x month heatmap ---------- */
+.heatmap-help { margin: -6px 0 12px; }
+.hm-legend-back { color: #15803d; font-weight: 600; }
+
+.heatmap-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+}
+
+table.heatmap {
+    overflow: visible;          /* the global table style clips, which breaks the sticky names */
+    border-collapse: separate;
+    border-spacing: 2px;
+    width: 100%;
+    font-size: 12.5px;
+    margin: 0;
+}
+
+table.heatmap th,
+table.heatmap td {
+    border: none;
+    padding: 0;
+    background: transparent;
+}
+
+table.heatmap thead th {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: none;
+    letter-spacing: 0;
+    padding: 6px 4px;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+.hm-month { text-align: center; min-width: 44px; }
+.hm-year { display: block; font-size: 10px; color: #94a3b8; font-weight: 500; }
+
+table.heatmap .hm-name {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--surface);
+    text-align: left;
+    white-space: nowrap;
+    padding: 0 10px 0 8px;
+    font-weight: 600;
+    color: #334155;
+    font-size: 12.5px;
+    text-transform: none;
+    letter-spacing: 0;
+}
+.hm-name .category-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    margin-right: 7px;
+    vertical-align: -1px;
+}
+
+table.heatmap .hm-cell {
+    height: 30px;
+    text-align: center;
+    border-radius: 5px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+.hm-cell a {
+    display: block;
+    line-height: 30px;
+    color: inherit;
+    text-decoration: none;
+    border-radius: 5px;
+}
+.hm-cell a:hover { outline: 2px solid #0f172a; outline-offset: -2px; }
+.hm-cell a:focus-visible { outline: 2px solid #4f8ef7; outline-offset: -2px; }
+table.heatmap .hm-empty { color: #cbd5e1; font-weight: 400; }
+table.heatmap .hm-back { color: #15803d; background: #f0fdf4; }
+
+table.heatmap .hm-num {
+    text-align: right;
+    white-space: nowrap;
+    padding: 0 10px;
+    color: #334155;
+    font-variant-numeric: tabular-nums;
+}
+
+.hm-total .hm-name,
+.hm-total .hm-num { font-weight: 700; color: #0f172a; }
+.hm-total th, .hm-total td { border-bottom: 2px solid #e2e8f0; }
+table.heatmap .hm-net-back .hm-name { color: #94a3b8; }
+
+/* Let wide content (the heatmap) scroll inside its card instead of widening the page. */
+.charts-grid > * { min-width: 0; }

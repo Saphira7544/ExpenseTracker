@@ -14,46 +14,73 @@
     <div class="fx-notice" id="fx-notice"></div>
 </div>
 
+<!-- What every chart below is focused on; filled by monthly.js -->
+<div class="focus-bar" id="focus-bar" aria-live="polite"></div>
+
 <div class="summary-row" id="summary-cards"></div>
 
 <div class="charts-grid">
     <div class="card chart-card">
         <h2><i class="fa-solid fa-chart-pie"></i> Expenses by Category</h2>
-        <canvas id="categoryPieChart"></canvas>
+        <div class="pie-wrap"><canvas id="categoryPieChart" aria-label="Expenses by category; click a slice to focus on it" role="img"></canvas></div>
     </div>
 
     <div class="card">
-        <h2><i class="fa-solid fa-list"></i> Category Breakdown</h2>
-        <table id="category-table">
+        <h2><i class="fa-solid fa-list"></i> Categories</h2>
+        <div class="table-scroll">
+        <table id="category-table" class="clickable-table">
             <thead>
                 <tr>
                     <th></th>
                     <th>Category</th>
-                    <th style="text-align:right;">Amount</th>
+                    <th class="numeric">Amount</th>
+                    <th class="numeric">Share</th>
+                    <th class="numeric" title="Compared with the average of the 12 months before">vs usual</th>
                 </tr>
             </thead>
             <tbody></tbody>
         </table>
+        </div>
+    </div>
+</div>
+
+<div class="charts-grid charts-grid-wide-left">
+    <div class="card chart-card">
+        <h2><i class="fa-solid fa-calendar-week"></i> <span id="daily-title">Daily Spending</span></h2>
+        <p class="small-muted chart-hint">Click a day to see what you spent on it. Bars below zero are money that came back.</p>
+        <canvas id="dailySpendChart" aria-label="Spending per day; click a day to focus on it" role="img"></canvas>
     </div>
 
-    <div class="card chart-card" style="grid-column: 1 / -1;">
-        <h2><i class="fa-solid fa-calendar-week"></i> Daily Spend</h2>
-        <canvas id="dailySpendChart"></canvas>
+    <div class="card chart-card">
+        <h2><i class="fa-solid fa-chart-column"></i> <span id="history-title">Last 13 Months</span></h2>
+        <p class="small-muted chart-hint">Is this month unusual? Click a bar to go to that month.</p>
+        <canvas id="historyChart" aria-label="The same spending over the last 13 months; click a month to open it" role="img"></canvas>
     </div>
 </div>
 
 <div class="card">
-    <h2><i class="fa-solid fa-ranking-star"></i> Top Expenses</h2>
-    <table id="top-merchants-table">
+    <div class="lines-header">
+        <h2><i class="fa-solid fa-receipt"></i> <span id="lines-title">Biggest Expenses</span></h2>
+        <div class="segmented" role="radiogroup" aria-label="Order">
+            <button type="button" class="segment selected" data-mode="biggest" role="radio" aria-checked="true">Biggest first</button>
+            <button type="button" class="segment" data-mode="date" role="radio" aria-checked="false">All, by date</button>
+        </div>
+    </div>
+    <div class="table-scroll">
+    <table id="lines-table">
         <thead>
             <tr>
+                <th>Date</th>
                 <th>Description</th>
-                <th>Occurrences</th>
-                <th style="text-align:right;">Total</th>
+                <th>Category</th>
+                <th class="numeric">Amount</th>
+                <th></th>
             </tr>
         </thead>
         <tbody></tbody>
     </table>
+    </div>
+    <div class="lines-footer" id="lines-footer"></div>
 </div>
 
 <link rel="stylesheet" href="{{ static_url('monthly.css') }}">

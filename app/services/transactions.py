@@ -276,7 +276,7 @@ def undo_split(user_id: int, transaction_id: str) -> None:
 def get_splits_for_transaction(user_id: int, transaction_id: str) -> list[dict]:
     with engine.connect() as conn:
         rows = conn.execute(
-            text("SELECT * FROM transaction_splits WHERE transactionId = :id AND user_id = :user_id"),
+            text("SELECT * FROM transaction_splits WHERE transactionId = :id AND user_id = :user_id ORDER BY id"),
             {"id": transaction_id, "user_id": user_id}
         ).mappings().all()
     return [dict(r) for r in rows]

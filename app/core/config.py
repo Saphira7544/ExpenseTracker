@@ -54,4 +54,16 @@ class Settings:
 
     ENABLE_LLM_CATEGORIZATION = os.getenv("ENABLE_LLM_CATEGORIZATION", "true").lower() == "true"
 
+    # Outgoing email (password reset links). Gmail: smtp.gmail.com, port 587,
+    # your address as user and an "app password" (not your normal password).
+    SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER = os.getenv("SMTP_USER", "").strip()
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM = os.getenv("SMTP_FROM", "").strip() or os.getenv("SMTP_USER", "").strip()
+
+    # Address used in emailed links. Never taken from the request (a forged Host
+    # header could otherwise point reset links at another site).
+    APP_BASE_URL = (os.getenv("APP_BASE_URL") or os.getenv("EXPENSE_TRACKER_URL") or "http://localhost:8000").rstrip("/")
+
 settings = Settings()

@@ -12,7 +12,7 @@ from legacy_db.networth_db import create_networth_tables
 from legacy_db.settings_db import create_settings_tables
 from legacy_db.migrations import run_data_migrations
 
-from app.api.routes import uploads, transactions, rules, auth, networth, analytics, categories, settings as settings_routes, bank_formats
+from app.api.routes import uploads, transactions, rules, auth, networth, analytics, categories, settings as settings_routes, bank_formats, system
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 
@@ -41,6 +41,7 @@ app.include_router(analytics.router)
 app.include_router(categories.router)
 app.include_router(settings_routes.router)
 app.include_router(bank_formats.router)
+app.include_router(system.router)
 
 
 @app.exception_handler(StarletteHTTPException)

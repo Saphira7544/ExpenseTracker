@@ -48,7 +48,68 @@
   <select id="displayCurrency" style="width:auto;"></select>
 </div>
 
+<!-- Only shown when running as the local app (Start-menu shortcut) -->
+<div class="card" id="appCard" hidden>
+  <h1 style="font-size:16px;">App</h1>
+  <p style="font-size:13px; color:#6b7280;" id="appStatus"></p>
+  <p id="appUpdate" style="font-size:13px; color:#b45309; display:none;">
+    <i class="fa-solid fa-circle-info"></i> The code changed since the app started. Restart to load it.
+  </p>
+  <label style="display:flex; align-items:center; gap:8px; font-size:14px; margin:12px 0;">
+    <input type="checkbox" id="autostart" style="width:auto;">
+    Start Expense Tracker automatically when I sign in to Windows
+  </label>
+  <p class="small-muted" style="margin:-6px 0 12px 24px;">Off: it starts when you open it from the Start menu.</p>
+  <div style="display:flex; gap:8px;">
+    <button class="primary" id="restartBtn"><i class="fa-solid fa-rotate"></i> Restart</button>
+    <button class="secondary" id="stopBtn"><i class="fa-solid fa-power-off"></i> Stop</button>
+  </div>
+  <p id="appMessage" style="font-size:13px; margin-top:8px;"></p>
+</div>
+
 <script>
+// ---------- Local app controls ----------
+async function loadAppStatus() {
+  const s = await fetch("/api/system/status").then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!s || !s.managed || !s.can_control) return;
+  document.getElementById("appCard").hidden = false;
+  const since = new Date(s.started_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  document.getElementById("appStatus").innerHTML =
+    `Running at <a href="${esc(s.url)}">${esc(s.url)}</a> since ${esc(since)}` +
+    (s.version ? ` · version <code>${esc(s.version)}</code>` : "");
+  document.getElementById("appUpdate").style.display = s.code_changed ? "" : "none";
+  document.getElementById("autostart").checked = s.autostart;
+}
+
+document.getElementById("autostart").onchange = async (e) => {
+  const msg = document.getElementById("appMessage");
+  const res = await fetch("/api/system/autostart", {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled: e.target.checked }),
+  });
+  if (res.ok) {
+    const { autostart } = await res.json();
+    e.target.checked = autostart;
+    msg.style.color = "#16a34a";
+    msg.textContent = autostart ? "It will start in the background when you sign in." : "It won't start at sign-in any more.";
+  } else {
+    e.target.checked = !e.target.checked;
+    msg.style.color = "#dc2626";
+    msg.textContent = "Couldn't change the startup setting.";
+  }
+};
+
+document.getElementById("restartBtn").onclick = () => restartApp();
+
+document.getElementById("stopBtn").onclick = async () => {
+  if (!confirm("Stop Expense Tracker? Open it again from the Start menu.")) return;
+  await fetch("/api/system/stop", { method: "POST" });
+  document.body.innerHTML = `<div style="display:flex; height:100vh; align-items:center; justify-content:center; font-family:sans-serif; color:#475569;">
+    Expense Tracker has stopped. Open it again from the Start menu.</div>`;
+};
+
+loadAppStatus();
+
 let SETTINGS = null;
 
 function bankLabel(bank) {

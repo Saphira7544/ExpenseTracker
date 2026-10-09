@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Expense Tracker</title>
     <link rel="stylesheet" href="{{ static_url('style.css') }}">
+    <link rel="icon" type="image/png" href="{{ static_url('favicon.png') }}">
     <link rel="stylesheet" href="{{ static_url('modern-theme.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script>
@@ -76,6 +77,11 @@
             <i class="fa-solid fa-building-columns"></i> Banks
         </a>
 
+        <button type="button" class="update-ready" id="updateReady" hidden onclick="restartApp()"
+                title="Code changed since the app started: restart to load it">
+            <i class="fa-solid fa-rotate"></i> Update ready · Restart
+        </button>
+
         <form method="post" action="/logout" style="padding: 16px 24px; margin-top: auto;">
             <button class="secondary" type="submit" style="width: 100%;">
                 <i class="fa-solid fa-right-from-bracket"></i> Logout
@@ -85,5 +91,33 @@
     <main class="main-content">
         {% block content %}{% endblock %}
     </main>
+<div class="restart-overlay" id="restartOverlay" hidden>
+    <div><i class="fa-solid fa-rotate fa-spin"></i><p id="restartMessage">Restarting Expense Tracker…</p></div>
+</div>
+<script>
+    // Local desktop app (localapp/): restart to load code changes; offer it in the sidebar when ready.
+    async function restartApp() {
+        const res = await fetch("/api/system/restart", { method: "POST" });
+        if (!res.ok) {
+            alert("Couldn't restart: " + ((await res.json().catch(() => ({}))).detail || res.status));
+            return;
+        }
+        document.getElementById("restartOverlay").hidden = false;
+        await new Promise(r => setTimeout(r, 1500));          // let the old server go away
+        for (let i = 0; i < 120; i++) {
+            try {
+                const ping = await fetch("/api/system/ping", { cache: "no-store" });
+                if (ping.ok) { location.reload(); return; }
+            } catch (e) { /* still restarting */ }
+            await new Promise(r => setTimeout(r, 1000));
+        }
+        document.getElementById("restartMessage").textContent =
+            "This is taking longer than expected. Check logs/server.log in the project folder.";
+    }
+
+    fetch("/api/system/status").then(r => r.ok ? r.json() : null).then(s => {
+        if (s && s.managed && s.can_control && s.code_changed) document.getElementById("updateReady").hidden = false;
+    }).catch(() => {});
+</script>
 </body>
 </html>

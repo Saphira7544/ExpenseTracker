@@ -109,6 +109,19 @@ def create_users_and_ownership():
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """))
+        # Bumped on password reset: sessions carry it, so older sessions stop working.
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0"))
+        # Password reset links: only a hash of the token is stored; single use, short-lived.
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS password_resets (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token_hash TEXT NOT NULL UNIQUE,
+                expires_at TIMESTAMP NOT NULL,
+                used_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """))
         conn.commit()
     print("✅ Users table ready")
 

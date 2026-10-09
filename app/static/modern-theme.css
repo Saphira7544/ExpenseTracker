@@ -320,3 +320,34 @@ tbody tr:hover {
 .fx-notice.fx-warning {
     color: #b45309;
 }
+
+/* ---------- Local app: update notice + restart overlay ---------- */
+.update-ready {
+    margin: 12px 16px 0;
+    padding: 8px 12px;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+.update-ready:hover { background: rgba(245, 158, 11, 0.22); }
+.update-ready[hidden], .restart-overlay[hidden] { display: none; }
+
+.restart-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.55);
+    color: #fff;
+    text-align: center;
+    font-size: 15px;
+}
+.restart-overlay i { font-size: 28px; }

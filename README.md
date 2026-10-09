@@ -226,6 +226,24 @@ The root page requires authentication. Unauthenticated visitors should be sent t
 
 The interactive API documentation is available at `/docs` when the app is running.
 
+## Run as a local app (Windows)
+
+To use the tracker on this PC without opening a terminal or activating the virtual environment:
+
+```powershell
+.\.venv\Scripts\python.exe -m localapp install
+```
+
+This adds **Start > Expense Tracker**. It starts the app in the background (no console window) if it isn't running, then opens **http://expenses.localhost** (browsers send `*.localhost` to this PC; if port 80 is taken it uses `:8500`). The server only listens on this PC, never on your network.
+
+In the app, **Settings > App** (admin only) has:
+
+- **Start automatically when I sign in to Windows**: adds or removes a shortcut in your Startup folder.
+- **Restart**: reloads the code (and installs `requirements.txt` if it changed). When Python files change, an *Update ready* button also appears in the sidebar.
+- **Stop**: shuts it down until you open it again from the Start menu.
+
+Logs are in `logs/server.log`. To remove the shortcuts: `.\.venv\Scripts\python.exe -m localapp uninstall`. Developing with `uvicorn app.main:app --reload` (port 8000) still works alongside it.
+
 ## User approval
 
 New registrations are created as unapproved accounts. The login route refuses access until `is_approved` is true.
@@ -244,6 +262,26 @@ After that, an admin can approve other users without SQL, e.g. from `/docs` whil
 - `POST /admin/users/{user_id}/approve` approves one.
 
 Grant administrator access only to trusted accounts.
+
+## Password reset by email
+
+The login page has **Forgot password?**. It emails a link that works once, for 30 minutes; only a hash of the link's token is stored, the page never reveals whether an email has an account, requests are rate-limited, and resetting signs out every existing session.
+
+Configure outgoing email in `.env` (Gmail shown; any SMTP server works):
+
+```dotenv
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=your-16-character-app-password
+SMTP_FROM=you@gmail.com
+# Address used in the emailed link (the local app sets this automatically):
+# APP_BASE_URL=http://expenses.localhost
+```
+
+For Gmail, `SMTP_PASSWORD` is an **app password** (Google Account > Security > 2-Step Verification > App passwords), not your normal password. Restart the app after editing `.env`.
+
+Until email is configured, the reset link is written to the server log (`logs/server.log` for the local app) instead of being sent.
 
 ## Configure OpenAI categorization
 

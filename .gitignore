@@ -10,3 +10,6 @@ package.json
 *.db
 *.sqlite
 *.sqlite3
+
+# Local app runtime (server log, pid/port file)
+logs/

@@ -8,11 +8,14 @@ def get_current_user(request: Request) -> dict:
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
-    user_id = read_session_token(token)
-    if not user_id:
+    session = read_session_token(token)
+    if not session:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
 
-    user = get_user_by_id(user_id)
+    user = get_user_by_id(session["user_id"])
+    # A password reset bumps session_version, which signs out every older session.
+    if user and session["v"] != user.get("session_version", 0):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session ended, please sign in again")
     # Block unapproved users from accessing the app
     if not user or not user.get("is_approved"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authorized or pending approval")

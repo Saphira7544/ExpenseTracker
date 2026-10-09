@@ -4,7 +4,7 @@ from app.core.auth import hash_password, verify_password
 from app.services.bank_formats import seed_default_formats
 
 # Columns that are safe to hand to routes and templates (no password_hash).
-PUBLIC_COLUMNS = "id, email, is_approved, is_admin, created_at"
+PUBLIC_COLUMNS = "id, email, is_approved, is_admin, created_at, session_version"
 
 def create_user(email: str, password: str) -> int:
     with engine.connect() as conn:

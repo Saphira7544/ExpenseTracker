@@ -28,12 +28,15 @@ def verify_password(password: str, password_hash: str) -> bool:
     except ValueError:
         return False
 
-def create_session_token(user_id: int) -> str:
-    return serializer.dumps({"user_id": user_id})
+def create_session_token(user_id: int, session_version: int = 0) -> str:
+    return serializer.dumps({"user_id": user_id, "v": session_version})
 
-def read_session_token(token: str) -> int | None:
+def read_session_token(token: str) -> dict | None:
+    """{"user_id", "v"}; sessions from before versions existed count as version 0."""
     try:
         data = serializer.loads(token, max_age=settings.SESSION_MAX_AGE_SECONDS)
-        return data.get("user_id")
     except BadSignature:  # also covers SignatureExpired
         return None
+    if not data.get("user_id"):
+        return None
+    return {"user_id": data["user_id"], "v": data.get("v", 0)}

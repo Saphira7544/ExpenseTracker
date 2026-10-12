@@ -1,0 +1,191 @@
+/* Monthly Sheet (/sheet). Uses monthly.css for the month picker. */
+
+.sheet-heading {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin: 22px 0 12px;
+}
+.sheet-heading h2 { margin: 0; font-size: 20px; color: #0f172a; }
+.sheet-heading h2 i { color: #64748b; margin-right: 4px; }
+.expenses-heading { margin-top: 26px; }
+
+.card h2 i { color: #64748b; margin-right: 4px; }
+
+/* ---------- Amounts: display currency, other currency underneath ---------- */
+.amount { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.amount .main { font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
+.amount .alt,
+.line-amount .alt { font-size: 12px; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.amount.money-back .main { color: #15803d; }
+
+/* ---------- Top: income, savings, totals ---------- */
+.sheet-top {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+@media (max-width: 1200px) {
+    .sheet-top { grid-template-columns: 1fr 1fr; }
+    #totals-block { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+    .sheet-top { grid-template-columns: 1fr; }
+}
+.sheet-top .card { margin-bottom: 0; }
+
+.block-total .amount { align-items: flex-start; }
+.block-total .main { font-size: 26px; }
+.block-total .alt { font-size: 13px; }
+.income-colour .main { color: #15803d; }
+.invested-colour .main { color: #7602c3; }
+
+.paid-in { margin: 6px 0 4px; }
+
+.totals-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.totals-table th, .totals-table td { padding: 7px 6px; border-bottom: 1px solid #eef1f6; }
+.totals-table thead th { font-size: 12px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.totals-table tbody th { text-align: left; font-weight: 500; color: #334155; }
+.totals-table td { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.totals-table tr.strong th, .totals-table tr.strong td { font-weight: 700; color: #0f172a; background: #f8fafc; }
+.totals-table tr.negative td { color: #dc2626; }
+.alt-col { color: #64748b; }
+
+.rate-box {
+    margin-top: 12px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 13px;
+}
+.rate-box i { color: #94a3b8; margin-right: 6px; }
+
+/* ---------- Mini category table and transaction lists ---------- */
+.category-mini { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0 4px; }
+.category-mini td { padding: 4px 0; border: none; color: #334155; }
+.category-mini td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.category-mini .category-swatch { width: 10px; height: 10px; margin-right: 4px; }
+
+.line-list { list-style: none; margin: 10px 0 0; padding: 0; border-top: 1px solid #eef1f6; }
+.line-list li {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: baseline;
+    padding: 6px 0;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 13px;
+}
+.line-list li[hidden] { display: none; }
+.line-date { color: #94a3b8; font-variant-numeric: tabular-nums; }
+.line-desc {
+    color: #334155;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.line-desc:hover { color: #2563eb; text-decoration: underline; }
+.line-amount { display: inline-flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.line-amount .main { color: #0f172a; font-weight: 600; }
+.money-back-line .line-amount .main { color: #15803d; }
+
+.show-more { margin-top: 8px; font-size: 13px; }
+.empty-note { margin: 10px 0 0; }
+
+/* ---------- Where the income went ---------- */
+.split-bar {
+    display: flex;
+    height: 30px;
+    border-radius: 8px;
+    overflow: hidden;
+    gap: 2px;
+    background: #fff;
+}
+.split-seg { flex-basis: 0; min-width: 3px; }
+.split-seg.left-over {
+    background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0 6px, transparent 6px 12px);
+}
+
+.split-legend {
+    list-style: none;
+    margin: 14px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+    gap: 6px 24px;
+    font-size: 13px;
+}
+.split-legend li { display: flex; align-items: center; gap: 8px; }
+.split-legend .legend-name { flex: 1; color: #334155; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-legend .legend-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+.split-legend .legend-share { width: 40px; text-align: right; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.split-note { margin: 10px 0 0; }
+
+/* ---------- Expense groups ---------- */
+.group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    align-items: start;
+    margin-bottom: 20px;
+}
+.group-grid .card { margin-bottom: 0; }
+
+.group-card { border-top: 4px solid var(--group-colour); }
+.group-card.empty { opacity: 0.6; }
+
+.group-header { display: flex; align-items: flex-start; gap: 12px; }
+.group-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--group-colour) 14%, #fff);
+    color: var(--group-colour);
+}
+.group-name { flex: 1; min-width: 0; }
+.group-name h3 { margin: 0; font-size: 15px; color: #0f172a; }
+.group-members { font-size: 12px; margin-top: 2px; }
+.group-header .amount .main { font-size: 17px; }
+
+.group-meter {
+    height: 6px;
+    margin: 12px 0 6px;
+    border-radius: 999px;
+    background: #eef1f6;
+    overflow: hidden;
+}
+.group-meter div { height: 100%; border-radius: 999px; background: var(--group-colour); }
+
+.group-stats { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+
+/* ---------- Summary ---------- */
+.summary-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.summary-table th, .summary-table td { padding: 8px 10px; border-bottom: 1px solid #eef1f6; }
+.summary-table thead th { font-size: 12px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.summary-table tbody th { text-align: left; font-weight: 500; color: #334155; white-space: nowrap; }
+.summary-table td { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.summary-table td.share { color: #94a3b8; }
+.summary-table .category-swatch { width: 10px; height: 10px; margin-right: 6px; }
+.summary-table tr.remaining-row th, .summary-table tr.remaining-row td { font-weight: 700; color: #15803d; }
+.summary-table tr.money-back td { color: #15803d; }
+.summary-table tfoot th, .summary-table tfoot td { font-weight: 700; color: #0f172a; background: #f8fafc; text-align: left; }
+.summary-table tfoot td { text-align: right; }
+
+/* Row labels are <th> for screen readers: undo the global column-header look. */
+.totals-table tbody th,
+.summary-table tbody th,
+.summary-table tfoot th {
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 14px;
+}
+.totals-table, .summary-table { margin-top: 0; }
+.category-mini { border-radius: 0; }
+.category-mini td { font-size: 13px; }

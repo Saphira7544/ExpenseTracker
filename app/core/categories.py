@@ -49,3 +49,29 @@ CATEGORY_COLORS = {
     "Uncategorized": "#9ca3af",     # light grey: not categorised yet
     "Split": "#334155",             # dark slate: a transaction split into parts
 }
+
+# Monthly Sheet page (/sheet): spending categories grouped the way the old
+# Excel budget sheet grouped its sections. Order = order on the page. Any
+# spending category not listed here (e.g. a new one) lands in "Other".
+# `color` is the colour of the group's main category.
+SHEET_GROUPS = [
+    {"name": "Housing", "icon": "fa-house", "color": CATEGORY_COLORS["Rents"],
+     "categories": ["Rents", "Housing", "Utilities"]},
+    {"name": "Food", "icon": "fa-utensils", "color": CATEGORY_COLORS["Restaurants/Bars"],
+     "categories": ["Groceries", "Restaurants/Bars"]},
+    {"name": "Leisure", "icon": "fa-masks-theater", "color": CATEGORY_COLORS["Entertainment"],
+     "categories": ["Entertainment", "Sports"]},
+    {"name": "Health", "icon": "fa-heart-pulse", "color": CATEGORY_COLORS["Health"],
+     "categories": ["Health"]},
+    {"name": "Transportation", "icon": "fa-train", "color": CATEGORY_COLORS["Transport"],
+     "categories": ["Transport"]},
+    {"name": "Shopping & Home", "icon": "fa-bag-shopping", "color": CATEGORY_COLORS["Shopping"],
+     "categories": ["Shopping"]},
+    {"name": "Subscriptions & Learning", "icon": "fa-repeat", "color": CATEGORY_COLORS["Subscriptions"],
+     "categories": ["Subscriptions", "Education/Work"]},
+    {"name": "Vacation / Trips", "icon": "fa-plane", "color": CATEGORY_COLORS["Travel"],
+     "categories": ["Travel"]},
+    {"name": "Other", "icon": "fa-ellipsis", "color": CATEGORY_COLORS["Other"],
+     "categories": ["Other", "Transfers", "Uncategorized"]},
+]
+SHEET_FALLBACK_GROUP = "Other"

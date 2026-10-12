@@ -74,8 +74,11 @@ function formatPeriodLabel(period) {
     return period;
 }
 
-Chart.defaults.font.family = "-apple-system, 'Segoe UI', Roboto, sans-serif";
-Chart.defaults.plugins.legend.labels.usePointStyle = true;
-Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,23,42,0.92)';
-Chart.defaults.plugins.tooltip.padding = 10;
-Chart.defaults.plugins.tooltip.cornerRadius = 8;
+// Pages without charts (e.g. the Monthly Sheet) use the helpers above without loading Chart.js.
+if (window.Chart) {
+    Chart.defaults.font.family = "-apple-system, 'Segoe UI', Roboto, sans-serif";
+    Chart.defaults.plugins.legend.labels.usePointStyle = true;
+    Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,23,42,0.92)';
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.cornerRadius = 8;
+}

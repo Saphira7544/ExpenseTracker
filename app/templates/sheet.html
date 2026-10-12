@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>Monthly Sheet</h1>
+
+<div class="card">
+    <div class="filter-bar">
+        <label for="year-select">Year</label>
+        <select id="year-select"></select>
+        <div class="month-buttons" id="month-buttons" role="radiogroup" aria-label="Month"></div>
+        <label for="currency-select">Currency</label>
+        <select id="currency-select"></select>
+    </div>
+    <div class="fx-notice" id="fx-notice"></div>
+</div>
+
+<div class="sheet-heading">
+    <h2 id="sheet-title"></h2>
+    <span class="small-muted" id="sheet-last-date"></span>
+</div>
+
+<!-- 1. Income · 2. Savings · Totals (filled by sheet.js) -->
+<div class="sheet-top">
+    <section class="card sheet-block" id="income-block" aria-labelledby="income-title"></section>
+    <section class="card sheet-block" id="savings-block" aria-labelledby="savings-title"></section>
+    <section class="card sheet-block" id="totals-block" aria-labelledby="totals-title"></section>
+</div>
+
+<section class="card" aria-labelledby="split-title">
+    <h2 id="split-title"><i class="fa-solid fa-chart-bar"></i> Where the income went</h2>
+    <div id="income-split"></div>
+</section>
+
+<div class="sheet-heading expenses-heading">
+    <h2><i class="fa-solid fa-receipt"></i> Expenses</h2>
+    <span class="small-muted" id="expenses-total"></span>
+</div>
+<div class="group-grid" id="group-grid"></div>
+
+<section class="card" aria-labelledby="summary-title">
+    <h2 id="summary-title"><i class="fa-solid fa-table"></i> Summary</h2>
+    <div class="table-scroll">
+        <table class="summary-table" id="summary-table"></table>
+    </div>
+</section>
+
+<link rel="stylesheet" href="{{ static_url('monthly.css') }}">
+<link rel="stylesheet" href="{{ static_url('sheet.css') }}">
+<script src="{{ static_url('charts-common.js') }}"></script>
+<script src="{{ static_url('sheet.js') }}"></script>
+{% endblock %}

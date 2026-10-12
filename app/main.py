@@ -12,7 +12,7 @@ from legacy_db.networth_db import create_networth_tables
 from legacy_db.settings_db import create_settings_tables
 from legacy_db.migrations import run_data_migrations
 
-from app.api.routes import uploads, transactions, rules, auth, networth, analytics, categories, settings as settings_routes, bank_formats, system
+from app.api.routes import uploads, transactions, rules, auth, networth, analytics, categories, settings as settings_routes, bank_formats, system, sheet
 from app.core.config import settings
 from app.core.dependencies import get_current_user
 
@@ -42,6 +42,7 @@ app.include_router(categories.router)
 app.include_router(settings_routes.router)
 app.include_router(bank_formats.router)
 app.include_router(system.router)
+app.include_router(sheet.router)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -107,6 +108,14 @@ async def monthly_page(request: Request, user: dict = Depends(get_current_user))
         request,
         "monthly.html",
         {"active_page": "monthly", "user": user}
+    )
+
+@app.get("/sheet")
+async def sheet_page(request: Request, user: dict = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        request,
+        "sheet.html",
+        {"active_page": "sheet", "user": user}
     )
 
 @app.get("/settings")

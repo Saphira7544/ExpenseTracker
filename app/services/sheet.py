@@ -3,7 +3,8 @@ from datetime import date
 
 import pandas as pd
 
-from app.core.categories import SHEET_GROUPS, SHEET_FALLBACK_GROUP
+from app.core.categories import SHEET_FALLBACK_GROUP
+from app.services.categories import sheet_groups_for
 from app.services import fx, sheet_core
 from app.services.analytics import _prepare
 from app.services.settings import SUPPORTED_DISPLAY_CURRENCIES
@@ -38,7 +39,7 @@ def get_sheet_bundle(user_id: int, month: str | None = None, currency: str | Non
         lines = lines.dropna(subset=["alt_value"])
         meta["fx_missing"] = sorted(set(meta["fx_missing"]) | set(missing))
 
-    sheet = sheet_core.month_sheet(lines, selected_month, SHEET_GROUPS, SHEET_FALLBACK_GROUP)
+    sheet = sheet_core.month_sheet(lines, selected_month, sheet_groups_for(user_id), SHEET_FALLBACK_GROUP)
     # The sheet's "conversion rate" box: the rate on the last day of the
     # month (or today, for the current month).
     rate_day = min(_month_end(selected_month), date.today())

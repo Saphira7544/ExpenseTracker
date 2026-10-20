@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
-from app.core.categories import CATEGORIES
+from app.services.categories import unknown_categories
 from app.core.dependencies import get_current_user
 from app.services.rules import (
     get_rules,
@@ -16,13 +16,6 @@ class RuleCreate(BaseModel):
     category: str
     keyword: str
 
-    @field_validator("category")
-    @classmethod
-    def _known_category(cls, value: str) -> str:
-        if value not in CATEGORIES:
-            raise ValueError(f"Unknown category: {value}")
-        return value
-
     @field_validator("keyword")
     @classmethod
     def _non_empty_keyword(cls, value: str) -> str:
@@ -37,6 +30,8 @@ def list_rules(user: dict = Depends(get_current_user)):
 
 @router.post("/api/rules")
 def create_rule(payload: RuleCreate, user: dict = Depends(get_current_user)):
+    if unknown_categories(user["id"], [payload.category]):
+        raise HTTPException(status_code=422, detail=f"Unknown category: {payload.category}")
     rule_id = add_rule(payload.category, payload.keyword, user["id"])
     return {"id": rule_id, "category": payload.category, "keyword": payload.keyword}
 

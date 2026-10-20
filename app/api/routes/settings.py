@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
-from app.core.categories import CATEGORIES
+from app.services.categories import categories_for
 from app.core.dependencies import get_current_user
 from app.services.settings import (
     SUPPORTED_DISPLAY_CURRENCIES,
@@ -44,7 +44,7 @@ def read_settings(user: dict = Depends(get_current_user)):
         **get_settings(user["id"]),
         "exclusions": list_exclusions(user["id"]),
         "banks": available_banks(user["id"]),
-        "categories": CATEGORIES,
+        "categories": categories_for(user["id"]),
         "available_currencies": SUPPORTED_DISPLAY_CURRENCIES,
     }
 
@@ -52,7 +52,7 @@ def read_settings(user: dict = Depends(get_current_user)):
 @router.patch("/api/settings")
 def update_settings(payload: SettingsUpdate, user: dict = Depends(get_current_user)):
     settings = {**get_settings(user["id"]), **payload.model_dump(exclude_none=True)}
-    problem = validate_settings(settings)
+    problem = validate_settings(settings, categories_for(user["id"]))
     if problem:
         raise HTTPException(status_code=400, detail=problem)
     save_settings(user["id"], settings)

@@ -126,6 +126,14 @@ async def settings_page(request: Request, user: dict = Depends(get_current_user)
         {"active_page": "settings", "user": user}
     )
 
+@app.get("/categories")
+async def categories_page(request: Request, user: dict = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        request,
+        "categories.html",
+        {"active_page": "categories", "user": user}
+    )
+
 @app.get("/banks")
 async def banks_page(request: Request, user: dict = Depends(get_current_user)):
     return templates.TemplateResponse(

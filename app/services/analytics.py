@@ -1,3 +1,5 @@
+from datetime import date
+
 import pandas as pd
 from sqlalchemy import text
 
@@ -84,6 +86,7 @@ def get_overview_bundle(user_id: int, year: str | None = None, currency: str | N
         "available_years": available_years,
         "selected_year": selected_year,
         "summary": core.totals(scoped),
+        "monthly_average": core.monthly_average(scoped, date.today().strftime("%Y-%m")),
         "income_expenses_trend": trend,
         "savings_rate_trend": core.savings_rate_trend(trend),
         "category_heatmap": core.category_heatmap(scoped),

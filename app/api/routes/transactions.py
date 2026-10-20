@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from typing import Optional
-from app.core.categories import CATEGORIES
+from app.services.categories import unknown_categories
 from app.core.dependencies import get_current_user
 from app.services.transactions import (
     get_transactions, get_categories, get_accounts, update_transaction_category,
@@ -17,23 +17,24 @@ from app.services.settings import SUPPORTED_DISPLAY_CURRENCIES
 router = APIRouter()
 
 
-def _known_category(value: str) -> str:
-    # "Split" is set only by the split endpoint, never chosen directly.
-    if value not in CATEGORIES:
-        raise ValueError(f"Unknown category: {value}")
-    return value
+def require_known_categories(user_id: int, *values: str | None) -> None:
+    """The user's categories (built-in + their own) only. "Split" is set only
+    by the split endpoint, never chosen directly, so it's rejected too."""
+    unknown = unknown_categories(user_id, [v for v in values if v])
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown category: {', '.join(unknown)}")
 
 
 class BulkCategoryUpdate(BaseModel):
     transaction_ids: list[str]
     category: str
-    _check_category = field_validator("category")(_known_category)
 
 @router.patch("/api/transactions/bulk-category")
 def bulk_category_update(
     payload: BulkCategoryUpdate,
     user: dict = Depends(get_current_user)
 ):
+    require_known_categories(user["id"], payload.category)
     updated = bulk_update_category(user["id"], payload.transaction_ids, payload.category)
     return {"updated": updated}
 
@@ -46,7 +47,6 @@ def bulk_delete(payload: BulkDelete, user: dict = Depends(get_current_user)):
 
 class CategoryUpdate(BaseModel):
     category: str
-    _check_category = field_validator("category")(_known_category)
 
 class TransactionPayload(BaseModel):
     """All fields of the add/edit dialog. amount is signed: negative = money out."""
@@ -82,17 +82,19 @@ class TransactionPayload(BaseModel):
     @field_validator("category")
     @classmethod
     def _optional_category(cls, value: Optional[str]) -> Optional[str]:
-        return None if value in (None, "") else _known_category(value)
+        return None if value in (None, "") else value  # checked per user in the routes
 
 
 @router.post("/api/transactions")
 def add_transaction(payload: TransactionPayload, user: dict = Depends(get_current_user)):
+    require_known_categories(user["id"], payload.category)
     transaction_id = create_transaction(user["id"], payload.model_dump())
     return get_transaction_by_id(user["id"], transaction_id)
 
 
 @router.put("/api/transactions/{transaction_id}")
 def edit_transaction(transaction_id: str, payload: TransactionPayload, user: dict = Depends(get_current_user)):
+    require_known_categories(user["id"], payload.category)
     existing = get_transaction_by_id(user["id"], transaction_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -146,6 +148,7 @@ def update_category(
     payload: CategoryUpdate,
     user: dict = Depends(get_current_user)
 ):
+    require_known_categories(user["id"], payload.category)
     updated = update_transaction_category(user["id"], transaction_id, payload.category)
     if not updated:
         existing = get_transaction_by_id(user["id"], transaction_id)
@@ -158,12 +161,10 @@ class SplitItem(BaseModel):
     category: str
     amount: float
     note: Optional[str] = None
-    _check_category = field_validator("category")(_known_category)
 
 class SplitRequest(BaseModel):
     splits: list[SplitItem]
     remainder_category: str = "Other"
-    _check_category = field_validator("remainder_category")(_known_category)
 
 @router.post("/api/transactions/{transaction_id}/split")
 def split_transaction(
@@ -171,6 +172,7 @@ def split_transaction(
     payload: SplitRequest,
     user: dict = Depends(get_current_user)
 ):
+    require_known_categories(user["id"], payload.remainder_category, *(s.category for s in payload.splits))
     original = get_transaction_by_id(user["id"], transaction_id)
     if not original:
         raise HTTPException(status_code=404, detail="Transaction not found")

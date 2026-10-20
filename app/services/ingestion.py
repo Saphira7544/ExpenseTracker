@@ -17,6 +17,7 @@ from app.db.session import engine
 from app.services.bank_formats import detection_configs
 from app.services.settings import get_exclusion_patterns
 from categorizers.openAI import classify_transactions_batch
+from app.services.categories import categories_for
 from categorizers.rule_categorizer import rule_based_categorize
 from legacy_db.db import insert_transactions
 from models.transaction import Transaction, TransactionType
@@ -48,7 +49,7 @@ def categorize_transactions(transactions, user_id: int, run_llm: bool = True) ->
     uncategorized = [t for t in transactions if not t.category]
 
     if run_llm and uncategorized:
-        categories = classify_transactions_batch([t.description for t in uncategorized])
+        categories = classify_transactions_batch([t.description for t in uncategorized], categories_for(user_id))
         for t, cat in zip(uncategorized, categories):
             if cat:
                 t.category = cat

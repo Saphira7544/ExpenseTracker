@@ -205,3 +205,35 @@ def category_history(lines: pd.DataFrame, month: str, months: int = 13) -> dict:
         by_category.setdefault(category, {})[p] = _r(v)
     total = -spending.groupby(period)["value"].sum()
     return {"months": window, "by_category": by_category, "total": {p: _r(v) for p, v in total.items()}}
+
+
+def monthly_average(lines: pd.DataFrame, current_month: str) -> dict | None:
+    """totals() per month on average, over complete months only.
+
+    `current_month` ('YYYY-MM', normally today's) is still in progress, so it
+    and anything after it are left out: its expenses aren't all in yet. The
+    window runs from the first to the last remaining month with any data,
+    counting the months in between even if they're empty (a month with no
+    spending is real). None when no complete month is left.
+    """
+    if lines.empty:
+        return None
+    period = periods(lines, "%Y-%m")
+    done = lines[period < current_month]
+    if done.empty:
+        return None
+    done_period = period[period < current_month]
+    first, last = done_period.min(), done_period.max()
+    months = len(pd.period_range(first, last, freq="M"))
+    t = totals(done)
+    return {
+        "months": months,
+        "from": first,
+        "to": last,
+        "left_out": sorted(set(period[period >= current_month])),
+        "income": _r(t["income"] / months),
+        "expenses": _r(t["expenses"] / months),
+        "invested": _r(t["invested"] / months),
+        "net": _r(t["net"] / months),
+        "savings_rate": t["savings_rate"],  # a ratio: the same over the whole window
+    }

@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="{{ static_url('modern-theme.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script>
+        try { if (localStorage.getItem("sidebarCollapsed") === "1") document.documentElement.classList.add("sidebar-collapsed"); } catch (e) {}
+    </script>
+    <script>
         // Escape untrusted text before interpolating it into innerHTML templates.
         function esc(value) {
             return String(value ?? "").replace(/[&<>"']/g, c => (
@@ -15,8 +18,8 @@
             ));
         }
 
-        // Fixed colour per category (app/core/categories.py), shared by badges and charts.
-        const CATEGORY_COLORS = {{ category_colors | tojson }};
+        // Fixed colour per category (built-in: app/core/categories.py; own: Categories page), shared by badges and charts.
+        const CATEGORY_COLORS = {{ category_colors(user) | tojson }};
 
         function categoryColor(category) {
             return CATEGORY_COLORS[category || "Uncategorized"] || CATEGORY_COLORS["Other"];
@@ -38,58 +41,57 @@
     </script>
 </head>
 <body>
-    <nav class="sidebar">
-        <h2><i class="fa-solid fa-wallet"></i> Expense Tracker</h2>
-        <div class="sidebar-user">{{ user.email if user else "" }}</div>
-
-        <a href="/" class="{{ 'active' if active_page == 'dashboard' }}">
-            <i class="fa-solid fa-chart-simple"></i> Dashboard
+    {% macro nav_link(href, page, icon, label) -%}
+        <a href="{{ href }}" class="{{ 'active' if active_page == page }}" title="{{ label }}"
+           {{ 'aria-current=page' if active_page == page }}>
+            <i class="fa-solid {{ icon }}" aria-hidden="true"></i><span class="nav-label">{{ label }}</span>
         </a>
-        <a href="/monthly" class="{{ 'active' if active_page == 'monthly' }}">
-            <i class="fa-solid fa-calendar-days"></i> Monthly
-        </a>
-        <a href="/sheet" class="{{ 'active' if active_page == 'sheet' }}">
-            <i class="fa-solid fa-table-list"></i> Monthly Sheet
-        </a>
-        <a href="/upload" class="{{ 'active' if active_page == 'upload' }}">
-            <i class="fa-solid fa-file-arrow-up"></i> Upload Files
-        </a>
-        <a href="/transactions" class="{{ 'active' if active_page == 'transactions' }}">
-            <i class="fa-solid fa-receipt"></i> Transactions
-        </a>
-        <a href="/rules" class="{{ 'active' if active_page == 'rules' }}">
-            <i class="fa-solid fa-sliders"></i> Rules
-        </a>
-
-        <div class="sidebar-section-label">Net Worth</div>
-
-        <a href="/networth" class="{{ 'active' if active_page == 'networth' }}">
-            <i class="fa-solid fa-coins"></i> Net Worth
-        </a>
-        <a href="/networth/config" class="{{ 'active' if active_page == 'networth_config' }}">
-            <i class="fa-solid fa-gear"></i> Net Worth Config
-        </a>
-        <a href="/networth/analytics" class="{{ 'active' if active_page == 'networth_charts' }}">
-            <i class="fa-solid fa-chart-line"></i> Net Worth Analytics
-        </a>
-
-        <a href="/settings" class="{{ 'active' if active_page == 'settings' }}">
-            <i class="fa-solid fa-user-gear"></i> Settings
-        </a>
-        <a href="/banks" class="{{ 'active' if active_page == 'banks' }}">
-            <i class="fa-solid fa-building-columns"></i> Banks
-        </a>
-
-        <button type="button" class="update-ready" id="updateReady" hidden onclick="restartApp()"
-                title="Code changed since the app started: restart to load it">
-            <i class="fa-solid fa-rotate"></i> Update ready · Restart
-        </button>
-
-        <form method="post" action="/logout" style="padding: 16px 24px; margin-top: auto;">
-            <button class="secondary" type="submit" style="width: 100%;">
-                <i class="fa-solid fa-right-from-bracket"></i> Logout
+    {%- endmacro %}
+    <nav class="sidebar" aria-label="Main">
+        <div class="sidebar-header">
+            <h2><i class="fa-solid fa-wallet" aria-hidden="true"></i><span class="nav-label">Expense Tracker</span></h2>
+            <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-controls="sidebarLinks"
+                    aria-expanded="true" title="Collapse the sidebar">
+                <i class="fa-solid fa-angles-left" aria-hidden="true"></i>
+                <span class="visually-hidden">Collapse the sidebar</span>
             </button>
-        </form>
+        </div>
+        <div class="sidebar-user nav-label">{{ user.email if user else "" }}</div>
+
+        <div class="sidebar-links" id="sidebarLinks">
+            <div class="sidebar-section-label"><span class="nav-label">Dashboards</span></div>
+            {{ nav_link('/', 'dashboard', 'fa-chart-simple', 'Dashboard') }}
+            {{ nav_link('/monthly', 'monthly', 'fa-calendar-days', 'Monthly') }}
+            {{ nav_link('/sheet', 'sheet', 'fa-table-list', 'Monthly Sheet') }}
+            {{ nav_link('/networth/analytics', 'networth_charts', 'fa-chart-line', 'Net Worth Analytics') }}
+
+            <div class="sidebar-section-label"><span class="nav-label">Transactions</span></div>
+            {{ nav_link('/upload', 'upload', 'fa-file-arrow-up', 'Upload Files') }}
+            {{ nav_link('/transactions', 'transactions', 'fa-receipt', 'Transactions') }}
+            {{ nav_link('/rules', 'rules', 'fa-sliders', 'Rules') }}
+
+            <div class="sidebar-section-label"><span class="nav-label">Net Worth</span></div>
+            {{ nav_link('/networth', 'networth', 'fa-coins', 'Net Worth') }}
+            {{ nav_link('/networth/config', 'networth_config', 'fa-gear', 'Net Worth Config') }}
+
+            <div class="sidebar-bottom">
+                <div class="sidebar-section-label"><span class="nav-label">Setup</span></div>
+                {{ nav_link('/categories', 'categories', 'fa-tags', 'Categories') }}
+                {{ nav_link('/banks', 'banks', 'fa-building-columns', 'Banks') }}
+                {{ nav_link('/settings', 'settings', 'fa-user-gear', 'Settings') }}
+
+                <button type="button" class="update-ready" id="updateReady" hidden onclick="restartApp()"
+                        title="Code changed since the app started: restart to load it">
+                    <i class="fa-solid fa-rotate" aria-hidden="true"></i><span class="nav-label"> Update ready · Restart</span>
+                </button>
+
+                <form method="post" action="/logout" class="sidebar-logout">
+                    <button class="secondary" type="submit" title="Logout">
+                        <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span class="nav-label"> Logout</span>
+                    </button>
+                </form>
+            </div>
+        </div>
     </nav>
     <main class="main-content">
         {% block content %}{% endblock %}
@@ -98,6 +100,27 @@
     <div><i class="fa-solid fa-rotate fa-spin"></i><p id="restartMessage">Restarting Expense Tracker…</p></div>
 </div>
 <script>
+    // Collapsible sidebar: icons only when collapsed; remembered in this browser.
+    (function () {
+        const root = document.documentElement;
+        const toggle = document.getElementById("sidebarToggle");
+        function sync() {
+            const collapsed = root.classList.contains("sidebar-collapsed");
+            const label = collapsed ? "Expand the sidebar" : "Collapse the sidebar";
+            toggle.setAttribute("aria-expanded", String(!collapsed));
+            toggle.title = label;
+            toggle.querySelector(".visually-hidden").textContent = label;
+        }
+        toggle.addEventListener("click", () => {
+            const collapsed = root.classList.toggle("sidebar-collapsed");
+            try { localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0"); } catch (e) {}
+            sync();
+            // Charts size themselves on window resize; let them refit to the new width.
+            setTimeout(() => window.dispatchEvent(new Event("resize")), 220);
+        });
+        sync();
+    })();
+
     // Local desktop app (localapp/): restart to load code changes; offer it in the sidebar when ready.
     async function restartApp() {
         const res = await fetch("/api/system/restart", { method: "POST" });

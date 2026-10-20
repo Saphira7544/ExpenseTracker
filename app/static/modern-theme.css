@@ -351,3 +351,87 @@ tbody tr:hover {
     font-size: 15px;
 }
 .restart-overlay i { font-size: 28px; }
+
+/* ---------- Sidebar layout: sections, bottom group, collapsible ---------- */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    transition: width 0.2s ease;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px 20px 24px;
+}
+.sidebar-header h2 { padding: 0; white-space: nowrap; }
+
+.sidebar-toggle {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #7c869c;
+    cursor: pointer;
+}
+.sidebar-toggle:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.sidebar-toggle:focus-visible { outline: 2px solid #4f8ef7; outline-offset: 2px; }
+.sidebar-toggle i { transition: transform 0.2s ease; }
+
+.sidebar-links { display: flex; flex-direction: column; flex: 1; }
+.sidebar a { white-space: nowrap; padding-top: 10px; padding-bottom: 10px; }
+.sidebar a:focus-visible { outline: 2px solid #4f8ef7; outline-offset: -2px; }
+
+.sidebar-section-label { padding: 16px 24px 4px; white-space: nowrap; }
+
+/* Setup links, update notice and logout sit at the bottom. */
+.sidebar-bottom {
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.sidebar-logout { padding: 12px 16px 0; }
+.sidebar-logout button { width: 100%; white-space: nowrap; }
+.update-ready { width: calc(100% - 32px); white-space: nowrap; }
+
+/* Collapsed: a narrow rail with icons only (labels stay as tooltips). */
+.sidebar-collapsed .sidebar { width: 64px; }
+.sidebar-collapsed .sidebar .nav-label { display: none; }
+.sidebar-collapsed .sidebar-header { flex-direction: column; gap: 10px; padding: 0 0 14px; }
+.sidebar-collapsed .sidebar-toggle i { transform: rotate(180deg); }
+.sidebar-collapsed .sidebar a { justify-content: center; padding-left: 0; padding-right: 0; gap: 0; }
+.sidebar-collapsed .sidebar a.active { border-left-width: 3px; }
+.sidebar-collapsed .sidebar-section-label { padding: 8px 0 4px; }
+.sidebar-collapsed .sidebar-section-label::before {
+    content: "";
+    display: block;
+    margin: 0 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.sidebar-collapsed .sidebar-bottom .sidebar-section-label::before { display: none; }
+.sidebar-collapsed .update-ready { width: auto; margin: 12px 10px 0; text-align: center; }
+.sidebar-collapsed .sidebar-logout { padding: 12px 10px 0; }
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar, .sidebar-toggle i { transition: none; }
+}
+
+/* Short or vertical screens: the sidebar scrolls on its own, with a slim scrollbar. */
+.sidebar { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.15) transparent; }

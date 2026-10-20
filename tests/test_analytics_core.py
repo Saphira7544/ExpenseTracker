@@ -167,3 +167,30 @@ def test_ignored_categories_are_left_out_of_every_total():
     # without the ignored role the same exchange would count as spending
     unignored = core.classify(with_internal, ("Salary",), ("Investments",), ())
     assert core.totals(unignored)["expenses"] == pytest.approx(-140.0 - 7476.7)
+
+
+AVERAGE_MONTHS = [
+    ("j1", "2026-01-25", "Salary", "Salary", 5000.0, "CHF"),
+    ("j2", "2026-01-10", "Rent", "Rents", -2000.0, "CHF"),
+    # February: nothing at all, still a month that counts
+    ("m1", "2026-03-25", "Salary", "Salary", 5000.0, "CHF"),
+    ("m2", "2026-03-10", "Rent", "Rents", -2000.0, "CHF"),
+    ("m3", "2026-03-20", "Broker", "Investments", -900.0, "CHF"),
+    ("o1", "2026-10-02", "Coop", "Groceries", -50.0, "CHF"),  # current month: not finished
+]
+
+
+def test_monthly_average_uses_complete_months_only():
+    avg = core.monthly_average(prepared(AVERAGE_MONTHS), "2026-10")
+    assert (avg["months"], avg["from"], avg["to"]) == (3, "2026-01", "2026-03")
+    assert avg["left_out"] == ["2026-10"]
+    assert avg["income"] == round(10000 / 3, 2)
+    assert avg["expenses"] == round(-4000 / 3, 2)
+    assert avg["invested"] == 300.0
+    assert avg["net"] == 2000.0
+    assert avg["savings_rate"] == 60.0
+
+
+def test_monthly_average_is_none_without_a_complete_month():
+    assert core.monthly_average(prepared(AVERAGE_MONTHS[-1:]), "2026-10") is None
+    assert core.monthly_average(prepared(AVERAGE_MONTHS).iloc[0:0], "2026-10") is None

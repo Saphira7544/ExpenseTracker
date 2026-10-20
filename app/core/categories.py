@@ -1,6 +1,7 @@
-# This is now the ONLY place you edit to add/remove/rename a category.
-# Everything else (the API, the rule-based UI dropdowns, the OpenAI
-# categorizer, badges and chart colours) reads from here.
+# The built-in categories. Users add their own on the Categories page
+# (custom_categories table); app/services/categories.py combines both, and
+# everything else (the API, dropdowns, the OpenAI categorizer, badges and
+# chart colours) reads from there.
 
 CATEGORIES = [
     "Salary",

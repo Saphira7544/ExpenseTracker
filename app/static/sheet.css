@@ -189,3 +189,25 @@
 .totals-table, .summary-table { margin-top: 0; }
 .category-mini { border-radius: 0; }
 .category-mini td { font-size: 13px; }
+
+/* "Left in your accounts": the month's bottom line, so it gets its own tile. */
+.left-over-tile {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 2px 12px;
+    margin: 4px 0 14px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+}
+.left-over-label { font-size: 13px; font-weight: 700; color: #166534; }
+.left-over-label i { margin-right: 6px; }
+.left-over-tile .amount { grid-row: span 2; }
+.left-over-tile .amount .main { font-size: 24px; color: #15803d; }
+.left-over-help { font-size: 12px; color: #4d7c5f; }
+.left-over-tile.negative { border-color: #fecaca; background: #fef2f2; }
+.left-over-tile.negative .left-over-label { color: #991b1b; }
+.left-over-tile.negative .amount .main { color: #dc2626; }
+.left-over-tile.negative .left-over-help { color: #b91c1c; }

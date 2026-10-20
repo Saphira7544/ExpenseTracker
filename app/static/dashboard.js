@@ -4,22 +4,27 @@ function renderOverviewSummaryCards(summary) {
         el.innerHTML = '<div class="summary-card"><div class="label">No data</div><div class="value">—</div></div>';
         return;
     }
-    el.innerHTML = `
+    el.innerHTML = summaryCards(summary);
+}
+
+/** Income, expenses, invested, net saved and savings rate; `per` labels the amounts (e.g. " / month"). */
+function summaryCards(summary, per = '') {
+    return `
         <div class="summary-card income">
-            <div class="label">Income</div>
+            <div class="label">Income${per}</div>
             <div class="value">${fmtMoney(summary.income)}</div>
         </div>
         <div class="summary-card expenses">
-            <div class="label">Expenses</div>
+            <div class="label">Expenses${per}</div>
             <div class="value">${fmtMoney(-summary.expenses)}</div>
             <div class="sub-value">Net of refunds &amp; repayments</div>
         </div>
         <div class="summary-card invested">
-            <div class="label">Invested</div>
+            <div class="label">Invested${per}</div>
             <div class="value">${fmtMoney(summary.invested)}</div>
         </div>
         <div class="summary-card net">
-            <div class="label">Net Saved</div>
+            <div class="label">Net Saved${per}</div>
             <div class="value">${fmtMoney(summary.net)}</div>
         </div>
         <div class="summary-card rate">
@@ -27,6 +32,28 @@ function renderOverviewSummaryCards(summary) {
             <div class="value">${summary.savings_rate.toFixed(1)}%</div>
         </div>
     `;
+}
+
+function monthLabel(period, opts = { month: 'short', year: 'numeric' }) {
+    const [y, m] = period.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString(undefined, opts);
+}
+
+// The same cards, per month on average over the complete months: the month
+// in progress is left out, its expenses aren't all in yet.
+function renderMonthlyAverage(avg) {
+    const block = document.getElementById('monthly-average');
+    block.hidden = !avg;
+    if (!avg) return;
+    const range = avg.from === avg.to ? monthLabel(avg.from)
+        : `${monthLabel(avg.from)} – ${monthLabel(avg.to)}`;
+    const notes = [`${range} · ${avg.months} complete month${avg.months === 1 ? '' : 's'}`];
+    if (avg.left_out.length) {
+        notes.push(`${avg.left_out.map(p => monthLabel(p, { month: 'long', year: 'numeric' })).join(', ')} ` +
+                   `left out until ${avg.left_out.length === 1 ? 'it ends' : 'they end'}`);
+    }
+    document.getElementById('monthly-average-note').textContent = notes.join(' · ');
+    document.getElementById('monthly-average-cards').innerHTML = summaryCards(avg, ' / month');
 }
 
 function renderOverviewIncomeExpensesChart(trend) {
@@ -91,7 +118,15 @@ function renderOverviewSavingsRateChart(trend) {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: c => `Savings rate: ${c.parsed.y.toFixed(1)}%` } },
+                tooltip: {
+                    callbacks: {
+                        label: c => `Savings rate: ${c.parsed.y.toFixed(1)}%`,
+                        afterLabel: c => [
+                            `Saved: ${fmtMoney(trend[c.dataIndex].net)}`,
+                            `Income: ${fmtMoney(trend[c.dataIndex].income)}`,
+                        ],
+                    },
+                },
             },
             scales: {
                 // Start at 0 so the line's height is proportional to the rate
@@ -206,6 +241,7 @@ async function loadOverview(year) {
     renderFxNotice(data);
     populateYearSelect(data.available_years, data.selected_year);
     renderOverviewSummaryCards(data.summary);
+    renderMonthlyAverage(data.monthly_average);
     renderOverviewIncomeExpensesChart(data.income_expenses_trend);
     renderOverviewSavingsRateChart(data.savings_rate_trend);
     renderCategoryHeatmap(data.category_heatmap);

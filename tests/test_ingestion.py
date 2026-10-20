@@ -58,7 +58,7 @@ def staged_ingestion(monkeypatch, tmp_path):
     monkeypatch.setattr(ingestion, "existing_ids", lambda uid, ids: {"TX1"})
     monkeypatch.setattr(ingestion, "rule_based_categorize",
                         lambda ts, uid: [setattr(t, "category", "Salary") for t in ts if "ACME" in t.description])
-    monkeypatch.setattr(ingestion, "classify_transactions_batch", lambda descs: ["Groceries"] * len(descs))
+    monkeypatch.setattr(ingestion, "classify_transactions_batch", lambda descs, categories: ["Groceries"] * len(descs))
     monkeypatch.setattr(ingestion, "_save_staged", lambda uid, files, rows: staged.setdefault("x", {"files": files, "transactions": rows}) and "x")
     monkeypatch.setattr(ingestion, "_load_staged", lambda uid, iid: staged.get(iid))
     monkeypatch.setattr(ingestion, "discard_import", lambda uid, iid: staged.pop(iid, None) is not None)
@@ -94,7 +94,7 @@ def test_llm_only_sees_new_rows(staged_ingestion, monkeypatch):
     files, _, _ = staged_ingestion
     seen = []
     monkeypatch.setattr(ingestion, "rule_based_categorize", lambda ts, uid: None)
-    monkeypatch.setattr(ingestion, "classify_transactions_batch", lambda descs: seen.extend(descs) or ["Other"] * len(descs))
+    monkeypatch.setattr(ingestion, "classify_transactions_batch", lambda descs, categories: seen.extend(descs) or ["Other"] * len(descs))
     preview = ingestion.stage_import(7, files, run_llm=True)
     assert len(seen) == 1  # TX1 was already imported and TX2 excluded: neither sent to the LLM
     assert preview["transactions"][0]["category_source"] == "llm"

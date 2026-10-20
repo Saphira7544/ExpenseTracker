@@ -1,7 +1,6 @@
 import json
 import logging
 from openai import OpenAI
-from app.core.categories import CATEGORIES
 
 logger = logging.getLogger(__name__)
 
@@ -20,41 +19,42 @@ def _get_client() -> OpenAI:
 
 
 # Structured output: the model must return {index, category} pairs and the
-# category is constrained to our list, so answers can't drift out of
+# category is constrained to the user's list, so answers can't drift out of
 # alignment with the inputs or invent categories.
-RESPONSE_FORMAT = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "transaction_categories",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "index": {"type": "integer"},
-                            "category": {"type": "string", "enum": CATEGORIES},
+def response_format(categories: list[str]) -> dict:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "transaction_categories",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "index": {"type": "integer"},
+                                "category": {"type": "string", "enum": categories},
+                            },
+                            "required": ["index", "category"],
+                            "additionalProperties": False,
                         },
-                        "required": ["index", "category"],
-                        "additionalProperties": False,
-                    },
-                }
+                    }
+                },
+                "required": ["results"],
+                "additionalProperties": False,
             },
-            "required": ["results"],
-            "additionalProperties": False,
         },
-    },
-}
+    }
 
 
-def _classify_batch(batch: list[str]) -> list[str | None]:
+def _classify_batch(batch: list[str], categories: list[str]) -> list[str | None]:
     prompt_lines = "\n".join(f"{j}. {desc}" for j, desc in enumerate(batch, start=1))
     prompt = (
         "You are a financial transaction categorizer.\n"
-        f"Categorize each transaction into one of these categories: {', '.join(CATEGORIES)}.\n"
+        f"Categorize each transaction into one of these categories: {', '.join(categories)}.\n"
         "Use Internal for moving money between the person's own accounts or currencies "
         "(e.g. top-ups, currency exchanges), not for payments to other people.\n"
         "Return one result per transaction, using its number as the index.\n\n"
@@ -64,7 +64,7 @@ def _classify_batch(batch: list[str]) -> list[str | None]:
     response = _get_client().chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        response_format=RESPONSE_FORMAT,
+        response_format=response_format(categories),
         max_tokens=40 * len(batch) + 100,
         temperature=0,
     )
@@ -72,12 +72,12 @@ def _classify_batch(batch: list[str]) -> list[str | None]:
     results: list[str | None] = [None] * len(batch)
     for item in json.loads(response.choices[0].message.content)["results"]:
         i = item.get("index", 0) - 1
-        if 0 <= i < len(batch) and item.get("category") in CATEGORIES:
+        if 0 <= i < len(batch) and item.get("category") in categories:
             results[i] = item["category"]
     return results
 
 
-def classify_transactions_batch(descriptions: list[str], batch_size: int = 40) -> list[str | None]:
+def classify_transactions_batch(descriptions: list[str], categories: list[str], batch_size: int = 40) -> list[str | None]:
     """
     Classify descriptions with the LLM. Always returns a list the same length
     as the input; entries the model skipped, or whole batches that failed,
@@ -87,7 +87,7 @@ def classify_transactions_batch(descriptions: list[str], batch_size: int = 40) -
     for i in range(0, len(descriptions), batch_size):
         batch = descriptions[i:i + batch_size]
         try:
-            results.extend(_classify_batch(batch))
+            results.extend(_classify_batch(batch, categories))
         except Exception:
             logger.exception("LLM categorization failed for a batch of %d transactions", len(batch))
             results.extend([None] * len(batch))

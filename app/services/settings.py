@@ -1,6 +1,5 @@
 from sqlalchemy import text
 from app.db.session import engine
-from app.core.categories import CATEGORIES
 from app.services import bank_formats
 
 SUPPORTED_DISPLAY_CURRENCIES = ["CHF", "EUR"]
@@ -28,11 +27,11 @@ def get_settings(user_id: int) -> dict:
         ).mappings().first()
     return {**DEFAULT_SETTINGS, **(dict(row) if row else {})}
 
-def validate_settings(settings: dict) -> str | None:
+def validate_settings(settings: dict, categories: list[str]) -> str | None:
     if settings["display_currency"] not in SUPPORTED_DISPLAY_CURRENCIES:
         return f"Display currency must be one of {', '.join(SUPPORTED_DISPLAY_CURRENCIES)}"
     for key in ROLE_KEYS:
-        unknown = set(settings[key]) - set(CATEGORIES)
+        unknown = set(settings[key]) - set(categories)
         if unknown:
             return f"Unknown categories: {', '.join(sorted(unknown))}"
     seen = set()

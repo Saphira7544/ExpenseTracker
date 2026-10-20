@@ -1,6 +1,7 @@
 // Monthly Sheet: the month laid out like the old Excel budget sheet.
 // Income, savings and totals at the top, then spending grouped into sections
-// (Housing, Food, ...; the grouping is SHEET_GROUPS in app/core/categories.py),
+// (Housing, Food, ...; SHEET_GROUPS in app/core/categories.py, plus the group
+// picked for each of your own categories on the Categories page),
 // then a summary. Every total is shown in the display currency and, smaller,
 // in the other one, like the sheet's CHF and EUR columns.
 
@@ -125,6 +126,13 @@ function renderTotals(t, rate) {
         : 'No exchange rate available';
     document.getElementById('totals-block').innerHTML = `
         <h2 id="totals-title"><i class="fa-solid fa-calculator"></i> Totals</h2>
+        <div class="left-over-tile${t.left_over < 0 ? ' negative' : ''}">
+            <div class="left-over-label"><i class="fa-solid fa-wallet"></i> Left in your accounts</div>
+            ${both(t.left_over, t.left_over_alt)}
+            <div class="left-over-help">${t.left_over < 0
+                ? 'Spent and invested more than the income'
+                : 'Income − expenses − invested'}</div>
+        </div>
         <table class="totals-table">
             <thead><tr><th></th><th class="numeric">${esc(DISPLAY_CURRENCY)}</th><th class="numeric alt-col">${esc(alt)}</th></tr></thead>
             <tbody>
@@ -133,7 +141,6 @@ function renderTotals(t, rate) {
                 ${row('Remaining', t.remaining, t.remaining_alt, 'strong ' + (t.remaining < 0 ? 'negative' : ''))}
                 <tr><th scope="row">Remaining, % of income</th><td class="numeric" colspan="2">${pct}</td></tr>
                 ${row('Of which invested', t.invested, t.invested_alt)}
-                ${row('Left in your accounts', t.left_over, t.left_over_alt, t.left_over < 0 ? 'negative' : '')}
             </tbody>
         </table>
         <div class="rate-box"><i class="fa-solid fa-right-left"></i> ${rateText}</div>`;

@@ -109,7 +109,9 @@ Search and filter everything you've imported.
 ### Rules
 Keyword rules: "description contains `migros` → Groceries". The longest matching keyword wins. *Preview* shows what re-running your rules would change before you apply it.
 
-### Dashboard and Monthly
+### Dashboard, Monthly and Monthly Sheet
+*Monthly Sheet* lays a month out like a budget spreadsheet: income, savings, totals in CHF and EUR, then spending grouped into sections (Housing, Food, …). The sidebar folds into an icon rail with the « button at the top.
+
 Yearly and monthly views of income, spending, investing and your savings rate, in CHF or EUR (switch at the top). How the numbers work:
 - **Income**: the categories you mark as income in Settings (by default *Salary*).
 - **Invested**: money going into investment categories (by default *Investments*). It counts as saved, not spent.
@@ -119,6 +121,9 @@ Yearly and monthly views of income, spending, investing and your savings rate, i
 
 ### Net Worth
 Your accounts, grouped by bank, with their latest value. Record a new value with the trend-arrow icon (for ETFs/stocks, enter quantity and price; *Use ECB rate* fills in the exchange rate). **Record snapshot** saves today's total as a point on your net-worth trend. *Net Worth Config* holds the lists you pick from (banks, asset categories, currencies…), and *Net Worth Analytics* shows the trend and how your money is allocated.
+
+### Categories
+Add your own categories next to the built-in ones: a name, a colour, and which *Monthly Sheet* section it belongs to. A new category is available straight away everywhere (Transactions, Rules, the AI suggestions on upload, Settings, every dashboard); nothing needs re-running. You can change its colour or section later, and delete it once no transaction, rule or setting uses it.
 
 ### Settings
 - **Import exclusions**: text that marks rows to skip when importing, per bank, e.g. transfers between your own accounts or card top-ups (`Payment to card`).

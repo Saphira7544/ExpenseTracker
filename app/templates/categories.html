@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Categories</h1>
+
+<div class="card">
+  <h2>Add a category</h2>
+  <p class="small-muted">
+    A new category can be picked straight away everywhere: Transactions, Rules, the AI suggestions on
+    upload, Settings and every dashboard. Nothing needs to be re-run; transactions keep their category
+    until you change it (or add a rule and rerun it).
+  </p>
+  <form class="category-form" id="addForm" autocomplete="off">
+    <label class="field">
+      <span>Name</span>
+      <input type="text" id="newName" required placeholder="e.g. Pets">
+    </label>
+    <label class="field field-color">
+      <span>Colour</span>
+      <input type="color" id="newColor">
+    </label>
+    <label class="field">
+      <span>Monthly Sheet group</span>
+      <select id="newGroup"></select>
+    </label>
+    <button class="primary" type="submit"><i class="fa-solid fa-plus"></i> Add</button>
+  </form>
+  <p class="form-error" id="addError" role="alert"></p>
+</div>
+
+<div class="card">
+  <h2>Your categories</h2>
+  <p class="small-muted">
+    Change a colour or group and it's saved right away. A category can be deleted once no transaction,
+    rule or dashboard setting uses it.
+  </p>
+  <div class="table-scroll">
+    <table class="categories-table">
+      <thead><tr><th>Category</th><th>Colour</th><th>Monthly Sheet group</th><th>Used by</th><th></th></tr></thead>
+      <tbody id="customBody"></tbody>
+    </table>
+  </div>
+  <p class="form-error" id="customError" role="alert"></p>
+</div>
+
+<div class="card">
+  <h2>Built-in categories</h2>
+  <p class="small-muted">These come with the app and can't be changed here.</p>
+  <div class="table-scroll">
+    <table class="categories-table">
+      <thead><tr><th>Category</th><th>Monthly Sheet group</th><th>Used by</th></tr></thead>
+      <tbody id="builtInBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .category-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: 12px; }
+  .category-form .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 600; }
+  .category-form .field input[type="text"] { width: 220px; }
+  .category-form .field select { width: auto; min-width: 200px; }
+  .category-form button { height: 38px; }
+  input[type="color"] { width: 48px; height: 38px; padding: 3px; cursor: pointer; }
+  .categories-table td { vertical-align: middle; }
+  .categories-table select { width: auto; min-width: 190px; }
+  .categories-table .usage { color: #64748b; font-size: 13px; }
+  .categories-table .row-status { font-size: 12px; color: #15803d; margin-left: 8px; }
+  .form-error { color: #dc2626; font-size: 13px; margin: 8px 0 0; min-height: 1em; }
+  .form-error:empty { display: none; }
+  .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+</style>
+
+<script>
+let pageData = null;
+
+function usageText(c) {
+  const parts = [];
+  if (c.transactions) parts.push(`${c.transactions} transaction${c.transactions === 1 ? "" : "s"}`);
+  if (c.rules) parts.push(`${c.rules} rule${c.rules === 1 ? "" : "s"}`);
+  if (c.roles) parts.push("dashboard settings");
+  return parts.join(" · ") || "Nothing yet";
+}
+
+function groupOptions(selected) {
+  return pageData.sheet_groups.map(g =>
+    `<option value="${esc(g)}" ${g === selected ? "selected" : ""}>${esc(g)}</option>`).join("");
+}
+
+function render() {
+  document.getElementById("newGroup").innerHTML = groupOptions("Other");
+  document.getElementById("newColor").value = pageData.suggested_color;
+  document.getElementById("newName").maxLength = pageData.max_name_length;
+
+  document.getElementById("customBody").innerHTML = pageData.custom.map(c => {
+    const inUse = c.transactions || c.rules || c.roles;
+    return `
+    <tr data-id="${esc(c.id)}" data-name="${esc(c.name)}">
+      <td>${categoryBadge(c.name)}</td>
+      <td><input type="color" class="edit-color" value="${esc(c.color)}" aria-label="Colour of ${esc(c.name)}"></td>
+      <td><select class="edit-group" aria-label="Monthly Sheet group of ${esc(c.name)}">${groupOptions(c.sheet_group)}</select>
+          <span class="row-status" aria-live="polite"></span></td>
+      <td class="usage">${esc(usageText(c))}</td>
+      <td><button type="button" class="icon-btn danger delete-btn" ${inUse ? "disabled" : ""}
+            title="${inUse ? "Still in use: move its transactions, rules and settings to another category first" : `Delete ${esc(c.name)}`}"
+            aria-label="Delete ${esc(c.name)}"><i class="fa-solid fa-trash"></i></button></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="5" class="small-muted">You haven't added any categories yet.</td></tr>`;
+
+  document.getElementById("builtInBody").innerHTML = pageData.built_in.map(c => `
+    <tr>
+      <td>${categoryBadge(c.name)}</td>
+      <td>${c.sheet_group ? esc(c.sheet_group)
+             : '<span class="small-muted" title="Income, investment or ignored (Settings): not part of the spending sections">Not spending</span>'}</td>
+      <td class="usage">${esc(usageText(c))}</td>
+    </tr>`).join("");
+}
+
+async function load() {
+  const res = await fetch("/api/categories/manage");
+  if (!res.ok) return;
+  pageData = await res.json();
+  pageData.custom.forEach(c => { CATEGORY_COLORS[c.name] = c.color; });
+  render();
+}
+
+async function errorText(res) {
+  const body = await res.json().catch(() => ({}));
+  if (typeof body.detail === "string") return body.detail;
+  return "Couldn't save: check the fields and try again.";
+}
+
+document.getElementById("addForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const error = document.getElementById("addError");
+  error.textContent = "";
+  const payload = {
+    name: document.getElementById("newName").value,
+    color: document.getElementById("newColor").value,
+    sheet_group: document.getElementById("newGroup").value,
+  };
+  const res = await fetch("/api/categories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    error.textContent = await errorText(res);
+    return;
+  }
+  document.getElementById("newName").value = "";
+  await load();
+});
+
+// Colour and group save as soon as they change.
+async function saveRow(row) {
+  const status = row.querySelector(".row-status");
+  const color = row.querySelector(".edit-color").value;
+  const res = await fetch(`/api/categories/${row.dataset.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ color, sheet_group: row.querySelector(".edit-group").value }),
+  });
+  document.getElementById("customError").textContent = res.ok ? "" : await errorText(res);
+  if (!res.ok) return;
+  CATEGORY_COLORS[row.dataset.name] = color;
+  row.querySelector("td").innerHTML = categoryBadge(row.dataset.name);
+  status.textContent = "Saved";
+  setTimeout(() => { status.textContent = ""; }, 1500);
+}
+
+const customBody = document.getElementById("customBody");
+customBody.addEventListener("change", (e) => {
+  if (e.target.matches(".edit-color, .edit-group")) saveRow(e.target.closest("tr"));
+});
+customBody.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".delete-btn");
+  if (!btn || btn.disabled) return;
+  const row = btn.closest("tr");
+  if (!confirm(`Delete the category "${row.dataset.name}"?`)) return;
+  const res = await fetch(`/api/categories/${row.dataset.id}`, { method: "DELETE" });
+  document.getElementById("customError").textContent = res.ok ? "" : await errorText(res);
+  load();
+});
+
+load();
+</script>
+{% endblock %}

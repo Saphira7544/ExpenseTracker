@@ -125,10 +125,13 @@ def test_suggests_separator_and_encoding(revolut_file, tmp_path):
 
 def test_category_roles_must_not_overlap():
     from app.services.settings import validate_settings, DEFAULT_SETTINGS
-    assert validate_settings(dict(DEFAULT_SETTINGS)) is None
+    from app.core.categories import CATEGORIES
+    assert validate_settings(dict(DEFAULT_SETTINGS), CATEGORIES) is None
     clash = {**DEFAULT_SETTINGS, "ignored_categories": ["Internal", "Salary"]}
-    assert "only have one role" in validate_settings(clash)
-    assert "Unknown" in validate_settings({**DEFAULT_SETTINGS, "ignored_categories": ["Nope"]})
+    assert "only have one role" in validate_settings(clash, CATEGORIES)
+    assert "Unknown" in validate_settings({**DEFAULT_SETTINGS, "ignored_categories": ["Nope"]}, CATEGORIES)
+    # A user's own category can have a role too.
+    assert validate_settings({**DEFAULT_SETTINGS, "ignored_categories": ["Nope"]}, CATEGORIES + ["Nope"]) is None
 
 
 def test_every_category_has_a_fixed_colour():

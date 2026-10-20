@@ -69,6 +69,24 @@ def create_settings_tables():
             )
         """))
 
+        # Categories the user added on the Categories page, on top of the
+        # built-in list in app/core/categories.py. sheet_group = the Monthly
+        # Sheet section it's shown in.
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS custom_categories (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                color TEXT NOT NULL,
+                sheet_group TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """))
+        conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS custom_categories_user_name
+            ON custom_categories (user_id, LOWER(name))
+        """))
+
         # One-time data steps that already ran (see legacy_db/migrations.py).
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS schema_migrations (

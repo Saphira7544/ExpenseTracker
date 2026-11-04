@@ -15,13 +15,8 @@
     <div class="fx-notice" id="fx-notice"></div>
 </div>
 
-<h2 class="cards-heading">Total</h2>
 <div class="summary-row" id="overview-summary-cards"></div>
-
-<section id="monthly-average" hidden>
-    <h2 class="cards-heading">Per month, on average <span class="small-muted" id="monthly-average-note"></span></h2>
-    <div class="summary-row" id="monthly-average-cards"></div>
-</section>
+<p class="small-muted summary-note" id="summary-note"></p>
 
 <div class="charts-grid">
     <div class="card chart-card">
@@ -33,6 +28,21 @@
         <h2><i class="fa-solid fa-piggy-bank"></i> Savings Rate Trend</h2>
         <canvas id="overviewSavingsRateChart"></canvas>
     </div>
+
+    <!-- Occasional spending (Settings: default Travel), apart from the regular month -->
+    <section class="card occasional-section" id="occasional-section" hidden aria-labelledby="occasional-title">
+        <h2><i class="fa-solid fa-plane"></i> <span id="occasional-title">Travel</span></h2>
+        <p class="small-muted occ-help">Sporadic spending that isn't part of a normal month: it comes out of
+            what you save. Money that came back (friends paying their share) is netted in.</p>
+        <div class="occ-stats" id="occasional-stats"></div>
+        <div class="occ-body">
+            <div class="occ-chart"><canvas id="occasionalChart" aria-label="Occasional spending per period" role="img"></canvas></div>
+            <div class="occ-biggest">
+                <h3>Biggest expenses</h3>
+                <ol class="occ-lines" id="occasional-lines"></ol>
+            </div>
+        </div>
+    </section>
 
     <div class="card" style="grid-column: 1 / -1;">
         <h2><i class="fa-solid fa-table-cells"></i> Spending by Category per Month</h2>

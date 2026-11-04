@@ -133,8 +133,10 @@ def insert_transactions(transactions: list[Transaction]) -> set[str]:
         for t in transactions:
             result = conn.execute(text("""
                 INSERT INTO transactions 
-                (transactionId, date, transactionType, description, amount, currency, account, sourceFile, category, user_id)
-                VALUES (:id, :date, :type, :desc, :amount, :currency, :account, :source, :category, :user_id)
+                (transactionId, date, transactionType, description, amount, currency, account, sourceFile, category,
+                 is_manual_category, user_id)
+                VALUES (:id, :date, :type, :desc, :amount, :currency, :account, :source, :category,
+                        :is_manual, :user_id)
                 ON CONFLICT (user_id, transactionId) DO NOTHING
             """), {
                 "id": t.transactionId,
@@ -146,6 +148,7 @@ def insert_transactions(transactions: list[Transaction]) -> set[str]:
                 "account": t.account,
                 "source": t.sourceFile,
                 "category": t.category,
+                "is_manual": t.is_manual_category,
                 "user_id": t.user_id
             })
             if result.rowcount > 0:

@@ -9,6 +9,7 @@
 }
 
 .page-header button i { margin-right: 6px; }
+.page-header .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .sr-only {
   position: absolute;
@@ -114,3 +115,19 @@
   .form-grid { grid-template-columns: 1fr; }
   .form-grid .span-2 { grid-column: auto; }
 }
+
+/* What the AI couldn't do: upload review and Transactions. */
+.ai-warning {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  background: #fffbeb;
+  color: #78350f;
+  font-size: 13px;
+}
+.ai-warning[hidden] { display: none; }
+.ai-warning p { margin: 4px 0 0; }
+.ai-warning a { color: #92400e; font-weight: 600; }
+.ai-warning.done { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+.ai-warning.done a { color: #166534; }

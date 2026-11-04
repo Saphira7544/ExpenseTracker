@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from app.services.categories import categories_for
 from app.core.dependencies import get_current_user
+from app.services.ai_settings import key_problem, key_status, save_api_key, delete_api_key
+from categorizers.openAI import check_key
 from app.services.settings import (
     SUPPORTED_DISPLAY_CURRENCIES,
     available_banks,
@@ -23,6 +25,13 @@ class SettingsUpdate(BaseModel):
     income_categories: Optional[list[str]] = None
     investment_categories: Optional[list[str]] = None
     ignored_categories: Optional[list[str]] = None
+    occasional_categories: Optional[list[str]] = None
+
+
+class AiKeySave(BaseModel):
+    # Checked in the route, not with a validator: FastAPI's validation errors
+    # echo the submitted value back, and the key must never be sent back.
+    api_key: str
 
 
 class ExclusionCreate(BaseModel):
@@ -57,6 +66,30 @@ def update_settings(payload: SettingsUpdate, user: dict = Depends(get_current_us
         raise HTTPException(status_code=400, detail=problem)
     save_settings(user["id"], settings)
     return settings
+
+
+@router.get("/api/settings/ai-key")
+def read_ai_key_status(user: dict = Depends(get_current_user)):
+    return key_status(user["id"])
+
+
+@router.put("/api/settings/ai-key")
+def store_ai_key(payload: AiKeySave, user: dict = Depends(get_current_user)):
+    api_key = payload.api_key.strip()
+    problem = key_problem(api_key)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+    usable, warning = check_key(api_key)
+    if not usable:
+        raise HTTPException(status_code=400, detail=warning)
+    save_api_key(user["id"], api_key)
+    return {**key_status(user["id"]), "warning": warning}
+
+
+@router.delete("/api/settings/ai-key")
+def remove_ai_key(user: dict = Depends(get_current_user)):
+    delete_api_key(user["id"])
+    return key_status(user["id"])
 
 
 @router.post("/api/settings/exclusions")

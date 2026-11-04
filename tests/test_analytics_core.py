@@ -194,3 +194,36 @@ def test_monthly_average_uses_complete_months_only():
 def test_monthly_average_is_none_without_a_complete_month():
     assert core.monthly_average(prepared(AVERAGE_MONTHS[-1:]), "2026-10") is None
     assert core.monthly_average(prepared(AVERAGE_MONTHS).iloc[0:0], "2026-10") is None
+
+
+TRIP_MONTH = [
+    ("s", "2026-05-25", "Salary", "Salary", 5000.0, "CHF"),
+    ("r", "2026-05-01", "Rent", "Rents", -2000.0, "CHF"),
+    ("f", "2026-05-10", "Flight", "Travel", -800.0, "CHF"),
+    ("h", "2026-05-12", "Hotel", "Travel", -500.0, "CHF"),
+    ("p", "2026-05-20", "Friend pays hotel half", "Travel", 250.0, "CHF"),
+]
+
+
+def trip_lines():
+    lines = core.build_lines(tx(TRIP_MONTH), splits([]))
+    lines["value"] = lines["amount"]
+    return core.classify(lines, ["Salary"], ["Investments"], ["Internal"], ["Travel"])
+
+
+def test_occasional_spending_is_shown_apart_but_still_counts():
+    t = core.totals(trip_lines())
+    assert t["expenses"] == -3050.0               # trips are still expenses
+    assert t["occasional"] == -1050.0             # net of the friend's repayment
+    assert t["regular_expenses"] == -2000.0
+    assert (t["net_regular"], t["net"]) == (3000.0, 1950.0)
+    assert (t["savings_rate_regular"], t["savings_rate"]) == (60.0, 39.0)
+
+
+def test_without_occasional_categories_everything_is_regular():
+    t = core.totals(prepared(TRIP_MONTH))
+    assert t["occasional"] == 0.0 and t["regular_expenses"] == t["expenses"]
+
+
+def test_biggest_trip_expenses_leave_out_money_back():
+    assert [l["description"] for l in core.occasional_lines(trip_lines())] == ["Flight", "Hotel"]

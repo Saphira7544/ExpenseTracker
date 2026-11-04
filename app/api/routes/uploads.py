@@ -1,11 +1,13 @@
 import os
 import uuid
+from datetime import date as Date
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from app.core.config import settings
 from app.core.dependencies import get_current_user
+from app.services.categories import unknown_categories
 from app.services.ingestion import stage_import, commit_import, discard_import
 
 router = APIRouter()
@@ -43,9 +45,43 @@ async def _save_upload(file: UploadFile, user_id: int) -> str:
     return save_path
 
 
+class RowEdit(BaseModel):
+    """What was changed on a row in the review dialog; fields left out stay as they were."""
+    date: Optional[Date] = None
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    category: Optional[str] = None      # "" or null = uncategorized
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("A description can't be empty")
+        return value.strip() if value is not None else None
+
+    @field_validator("amount")
+    @classmethod
+    def _amount(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and abs(value) < 0.005:
+            raise ValueError("An amount can't be zero")
+        return round(value, 2) if value is not None else None
+
+    def changes(self) -> dict:
+        """The fields sent, ready for the staged row. A null category is a change (to uncategorized)."""
+        fields = self.model_dump(exclude_unset=True)
+        changes = {k: v for k, v in fields.items() if v is not None or k == "category"}
+        if "date" in changes:
+            changes["date"] = changes["date"].isoformat()
+        if "category" in changes:
+            changes["category"] = changes["category"] or None
+        return changes
+
+
 class ConfirmImport(BaseModel):
     # None = import every previewed row; otherwise only these (the ones left ticked).
     transaction_ids: Optional[list[str]] = None
+    # Changes made in the review, by transaction ID.
+    edits: Optional[dict[str, RowEdit]] = None
 
 
 @router.post("/api/uploads/preview")
@@ -61,7 +97,11 @@ async def preview_upload(
 
 @router.post("/api/uploads/{import_id}/confirm")
 def confirm_upload(import_id: str, payload: ConfirmImport, user: dict = Depends(get_current_user)):
-    result = commit_import(user["id"], import_id, payload.transaction_ids)
+    edits = {tx_id: edit.changes() for tx_id, edit in (payload.edits or {}).items()}
+    unknown = unknown_categories(user["id"], [e["category"] for e in edits.values() if e.get("category")])
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown category: {', '.join(unknown)}")
+    result = commit_import(user["id"], import_id, payload.transaction_ids, edits)
     if result is None:
         raise HTTPException(status_code=404, detail="This upload preview has expired or was already imported. Upload the files again.")
     return result

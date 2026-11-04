@@ -9,9 +9,15 @@ DEFAULT_SETTINGS = {
     "income_categories": ["Salary"],
     "investment_categories": ["Investments"],
     "ignored_categories": ["Internal"],
+    # Still spending, but sporadic (e.g. trips): the dashboard shows it apart
+    # from the regular monthly expenses.
+    "occasional_categories": ["Travel"],
 }
 
-ROLE_KEYS = ("income_categories", "investment_categories", "ignored_categories")
+# Categories that aren't spending at all.
+NOT_SPENDING_KEYS = ("income_categories", "investment_categories", "ignored_categories")
+# Every role a category can have; at most one each.
+ROLE_KEYS = NOT_SPENDING_KEYS + ("occasional_categories",)
 
 def available_banks(user_id: int) -> list[str]:
     return bank_formats.available_banks(user_id)
@@ -20,7 +26,8 @@ def get_settings(user_id: int) -> dict:
     with engine.connect() as conn:
         row = conn.execute(
             text("""
-                SELECT display_currency, income_categories, investment_categories, ignored_categories
+                SELECT display_currency, income_categories, investment_categories, ignored_categories,
+                       occasional_categories
                 FROM user_settings WHERE user_id = :user_id
             """),
             {"user_id": user_id}
@@ -38,7 +45,7 @@ def validate_settings(settings: dict, categories: list[str]) -> str | None:
     for key in ROLE_KEYS:
         for category in settings[key]:
             if category in seen:
-                return f"'{category}' can only have one role (income, investment or ignored)"
+                return f"'{category}' can only have one role (income, investment, ignored or occasional)"
             seen.add(category)
     return None
 
@@ -46,13 +53,16 @@ def save_settings(user_id: int, settings: dict) -> None:
     with engine.connect() as conn:
         conn.execute(
             text("""
-                INSERT INTO user_settings (user_id, display_currency, income_categories, investment_categories, ignored_categories)
-                VALUES (:user_id, :display_currency, :income_categories, :investment_categories, :ignored_categories)
+                INSERT INTO user_settings (user_id, display_currency, income_categories, investment_categories,
+                                           ignored_categories, occasional_categories)
+                VALUES (:user_id, :display_currency, :income_categories, :investment_categories,
+                        :ignored_categories, :occasional_categories)
                 ON CONFLICT (user_id) DO UPDATE SET
                     display_currency = EXCLUDED.display_currency,
                     income_categories = EXCLUDED.income_categories,
                     investment_categories = EXCLUDED.investment_categories,
                     ignored_categories = EXCLUDED.ignored_categories,
+                    occasional_categories = EXCLUDED.occasional_categories,
                     updated_at = NOW()
             """),
             {
@@ -61,6 +71,7 @@ def save_settings(user_id: int, settings: dict) -> None:
                 "income_categories": list(settings["income_categories"]),
                 "investment_categories": list(settings["investment_categories"]),
                 "ignored_categories": list(settings["ignored_categories"]),
+                "occasional_categories": list(settings["occasional_categories"]),
             }
         )
         conn.commit()

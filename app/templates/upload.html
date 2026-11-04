@@ -38,7 +38,8 @@
       <h1 id="reviewTitle">Review import</h1>
       <button type="button" class="icon-btn small" id="reviewCloseBtn" title="Cancel import"><i class="fa-solid fa-xmark"></i></button>
     </div>
-    <p class="dialog-note">Nothing has been added yet. Untick any rows you don't want, then import.</p>
+    <div class="ai-warning" id="reviewAiWarning" role="alert" hidden></div>
+    <p class="dialog-note">Nothing has been added yet. Fix anything you want, untick the rows you don't want, then import.</p>
 
     <div class="table-scroll">
       <table class="review-files">
@@ -55,7 +56,7 @@
     <div id="reviewRowsWrap">
       <div class="review-toolbar">
         <strong id="reviewRowsTitle"></strong>
-        <span class="small-muted">Categories: <span class="src-tag rule">rule</span> from your rules, <span class="src-tag llm">AI</span> suggested.</span>
+        <span class="small-muted">Edit anything directly in the table. Categories: <span class="src-tag rule">rule</span> from your rules, <span class="src-tag llm">AI</span> suggested, <span class="src-tag edited">edited</span> by you.</span>
       </div>
       <div class="review-rows">
         <table class="review-table">
@@ -93,6 +94,7 @@ const $ = id => document.getElementById(id);
 
 let selectedFiles = [];
 let preview = null;          // response of /api/uploads/preview
+let categoryNames = [];      // what the review's category pickers offer
 
 dropzone.onclick = () => fileInput.click();
 
@@ -134,7 +136,9 @@ function formatDate(iso) {
 
 async function errorText(res) {
   const body = await res.json().catch(() => ({}));
-  return typeof body.detail === "string" ? body.detail : `Request failed (${res.status})`;
+  if (typeof body.detail === "string") return body.detail;
+  if (Array.isArray(body.detail) && body.detail[0]?.msg) return body.detail[0].msg.replace(/^Value error, /, "");
+  return `Request failed (${res.status})`;
 }
 
 // ---------- Step 1: preview ----------
@@ -156,6 +160,7 @@ uploadBtn.onclick = async () => {
       return;
     }
     preview = await res.json();
+    categoryNames = await fetch("/api/categories").then(r => (r.ok ? r.json() : []));
     preview.files.forEach(f => f.error
       ? setFileStatus(f.filename, "Not recognised", "status-error")
       : setFileStatus(f.filename, "Ready to review", "status-pending"));
@@ -170,8 +175,21 @@ uploadBtn.onclick = async () => {
 
 // ---------- Step 2: review dialog ----------
 
+function renderAiWarning(warning) {
+  const el = $("reviewAiWarning");
+  el.hidden = !warning;
+  if (!warning) return;
+  const n = warning.uncategorized;
+  el.innerHTML = `
+    <strong><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> The AI couldn't categorize ${n} transaction${n === 1 ? "" : "s"}</strong>
+    <p>${esc(warning.message)}</p>
+    <p>You can cancel, fix this and upload again so the AI gets another try, or import now and categorize them yourself.
+       <a href="/settings#ai" target="_blank" rel="noopener">Open AI settings</a></p>`;
+}
+
 function openReview() {
   $("reviewError").textContent = "";
+  renderAiWarning(preview.ai_warning);
 
   $("reviewFilesBody").innerHTML = preview.files.map(f => f.error ? `
       <tr><td>${esc(f.filename)}</td><td colspan="5" class="review-error">${esc(f.error)}</td></tr>` : `
@@ -188,25 +206,92 @@ function openReview() {
   $("reviewNothing").style.display = rows.length ? "none" : "";
   $("reviewRowsTitle").textContent = `${rows.length} new transaction${rows.length === 1 ? "" : "s"}`;
 
-  $("reviewRowsBody").innerHTML = rows.map(r => {
-    const tag = r.category_source === "llm" ? '<span class="src-tag llm">AI</span>'
-              : r.category_source === "rule" ? '<span class="src-tag rule">rule</span>' : "";
-    return `
-      <tr>
+  $("reviewRowsBody").innerHTML = rows.map(r => `
+      <tr data-id="${esc(r.id)}">
         <td class="col-select"><input type="checkbox" class="review-check" data-id="${esc(r.id)}" checked aria-label="Import this row"></td>
-        <td class="nowrap">${esc(formatDate(r.date))}</td>
-        <td><div class="review-desc" title="${esc(r.description)}">${esc(r.description)}</div>
+        <td><input type="date" class="edit-date" value="${esc(r.date)}" aria-label="Date"></td>
+        <td><input type="text" class="edit-desc" value="${esc(r.description)}" title="${esc(r.description)}" aria-label="Description">
             ${multipleFiles ? `<div class="small-muted">${esc(preview.files[r.file].filename)}</div>` : ""}</td>
         <td class="nowrap">${esc(r.account)}</td>
-        <td class="nowrap">${categoryBadge(r.category)} ${tag}</td>
-        <td class="num nowrap ${r.amount >= 0 ? "amount-positive" : "amount-negative"}">${esc(formatAmount(r.amount))} <span class="small-muted">${esc(r.currency)}</span></td>
-      </tr>`;
-  }).join("");
+        <td class="nowrap">
+          <span class="category-swatch" style="background:${categoryColor(r.category)}"></span>
+          <select class="edit-cat" aria-label="Category">${categoryOptions(r.category)}</select>
+          <span class="tag-slot">${sourceTag(r.category_source)}</span>
+        </td>
+        <td class="num nowrap">
+          <input type="number" step="0.01" class="edit-amount ${amountClass(r.amount)}" value="${esc(r.amount)}" aria-label="Amount">
+          <span class="small-muted">${esc(r.currency)}</span>
+        </td>
+      </tr>`).join("");
 
   $("reviewAll").checked = true;
   updateSelectedInfo();
   $("reviewModal").style.display = "flex";
   $("reviewImportBtn").focus();
+}
+
+function sourceTag(source) {
+  return source === "llm" ? '<span class="src-tag llm">AI</span>'
+       : source === "rule" ? '<span class="src-tag rule">rule</span>'
+       : source === "edited" ? '<span class="src-tag edited">edited</span>' : "";
+}
+
+function amountClass(amount) {
+  return amount >= 0 ? "amount-positive" : "amount-negative";
+}
+
+function categoryOptions(selected) {
+  // A row can hold a category that's no longer on the list (a rule pointing at an old one).
+  const names = selected && !categoryNames.includes(selected) ? [selected, ...categoryNames] : categoryNames;
+  return `<option value="" ${selected ? "" : "selected"}>Uncategorized</option>` + names.map(c =>
+    `<option value="${esc(c)}" ${c === selected ? "selected" : ""}>${esc(c)}</option>`).join("");
+}
+
+function originalRow(tr) {
+  return preview.transactions.find(r => r.id === tr.dataset.id);
+}
+
+/** What the user changed on this row: only the fields that differ from the preview. */
+function rowEdit(tr) {
+  const r = originalRow(tr);
+  const edit = {};
+  const date = tr.querySelector(".edit-date").value;
+  const description = tr.querySelector(".edit-desc").value.trim();
+  const amount = tr.querySelector(".edit-amount").value;
+  const category = tr.querySelector(".edit-cat").value;
+  if (date !== r.date) edit.date = date;
+  if (description !== r.description.trim()) edit.description = description;
+  if (amount !== String(r.amount)) edit.amount = Number(amount);
+  if (category !== (r.category || "")) edit.category = category;
+  return edit;
+}
+
+function reviewRows() {
+  return Array.from(document.querySelectorAll("#reviewRowsBody tr"));
+}
+
+function hasEdits() {
+  return reviewRows().some(tr => Object.keys(rowEdit(tr)).length > 0);
+}
+
+/** Marks what can't be imported on the ticked rows; true if everything's fine. */
+function validateRows() {
+  let ok = true;
+  reviewRows().forEach(tr => {
+    const ticked = tr.querySelector(".review-check").checked;
+    const amount = tr.querySelector(".edit-amount");
+    const checks = [
+      [tr.querySelector(".edit-date"), v => v],
+      [tr.querySelector(".edit-desc"), v => v.trim()],
+      [amount, v => v !== "" && Math.abs(Number(v)) >= 0.005],
+    ];
+    checks.forEach(([input, valid]) => {
+      const bad = ticked && !valid(input.value);
+      input.classList.toggle("invalid", bad);
+      if (bad) ok = false;
+    });
+  });
+  return ok;
 }
 
 function checkedIds() {
@@ -224,8 +309,20 @@ function updateSelectedInfo() {
 }
 
 $("reviewRowsBody").addEventListener("change", e => {
-  if (e.target.classList.contains("review-check")) updateSelectedInfo();
+  const el = e.target;
+  if (el.classList.contains("review-check")) updateSelectedInfo();
+  if (el.classList.contains("edit-cat")) {
+    const tr = el.closest("tr");
+    const r = originalRow(tr);
+    tr.querySelector(".category-swatch").style.background = categoryColor(el.value);
+    tr.querySelector(".tag-slot").innerHTML = sourceTag(el.value === (r.category || "") ? r.category_source : "edited");
+  }
+  if (el.classList.contains("edit-amount")) {
+    el.classList.remove("amount-positive", "amount-negative");
+    if (el.value !== "") el.classList.add(amountClass(Number(el.value)));
+  }
 });
+$("reviewRowsBody").addEventListener("input", e => e.target.classList.remove("invalid"));
 $("reviewAll").onchange = () => {
   document.querySelectorAll(".review-check").forEach(cb => cb.checked = $("reviewAll").checked);
   updateSelectedInfo();
@@ -240,11 +337,17 @@ async function cancelReview() {
   }
 }
 
-$("reviewCancelBtn").onclick = cancelReview;
-$("reviewCloseBtn").onclick = cancelReview;
-$("reviewModal").addEventListener("mousedown", e => { if (e.target.id === "reviewModal") cancelReview(); });
+// Closing throws the upload away: don't lose edits to a stray Esc or click.
+function askToCancel() {
+  if (hasEdits() && !confirm("Cancel this import and lose your edits?")) return;
+  cancelReview();
+}
+
+$("reviewCancelBtn").onclick = askToCancel;
+$("reviewCloseBtn").onclick = askToCancel;
+$("reviewModal").addEventListener("mousedown", e => { if (e.target.id === "reviewModal") askToCancel(); });
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && $("reviewModal").style.display === "flex") cancelReview();
+  if (e.key === "Escape" && $("reviewModal").style.display === "flex") askToCancel();
 });
 
 // ---------- Step 3: import ----------
@@ -256,6 +359,16 @@ $("reviewImportBtn").onclick = async () => {
     showResults(files);
     return;
   }
+  if (!validateRows()) {
+    $("reviewError").textContent = "Fix the rows marked in red, or untick them.";
+    return;
+  }
+  $("reviewError").textContent = "";
+  const edits = {};
+  reviewRows().forEach(tr => {
+    const edit = rowEdit(tr);
+    if (tr.querySelector(".review-check").checked && Object.keys(edit).length) edits[tr.dataset.id] = edit;
+  });
   const btn = $("reviewImportBtn");
   btn.disabled = true;
   btn.textContent = "Importing…";
@@ -263,7 +376,7 @@ $("reviewImportBtn").onclick = async () => {
     const res = await fetch(`/api/uploads/${preview.import_id}/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transaction_ids: checkedIds() }),
+      body: JSON.stringify({ transaction_ids: checkedIds(), edits }),
     });
     if (!res.ok) {
       $("reviewError").textContent = await errorText(res);

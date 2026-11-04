@@ -3,12 +3,16 @@
 1. stage_import(): parse each file, drop excluded rows and rows that were
    already imported, categorize what's left (rules, then the LLM) and keep it
    in staged_imports. Nothing is added to the transactions yet.
-2. commit_import(): insert the staged rows the user kept, exactly as previewed.
-   discard_import() throws a staged upload away.
+2. commit_import(): insert the staged rows the user kept, as previewed plus any
+   edits made in the review. discard_import() throws a staged upload away.
+
+categorize_uncategorized() gives transactions that are already imported the
+same treatment, e.g. when the AI couldn't run at upload time.
 """
 import json
 import uuid
 from datetime import datetime
+from types import SimpleNamespace
 
 from sqlalchemy import text
 
@@ -17,6 +21,7 @@ from app.db.session import engine
 from app.services.bank_formats import detection_configs
 from app.services.settings import get_exclusion_patterns
 from categorizers.openAI import classify_transactions_batch
+from app.services.ai_settings import get_api_key
 from app.services.categories import categories_for
 from categorizers.rule_categorizer import rule_based_categorize
 from legacy_db.db import insert_transactions
@@ -25,6 +30,7 @@ from parsers.detector import detect_config
 from parsers.generic_parser import GenericParser
 
 STAGED_IMPORT_TTL_HOURS = 24
+MANUAL_SOURCE = "manual"
 
 
 class UnknownFormat(ValueError):
@@ -42,19 +48,23 @@ def parse_transactions(file_path: str, user_id: int):
     return transactions, bank_parser.excluded_count, config
 
 
-def categorize_transactions(transactions, user_id: int, run_llm: bool = True) -> dict[str, str]:
-    """Fill in categories; returns {transactionId: "rule" | "llm"} for the ones categorized."""
+def categorize_transactions(transactions, user_id: int, run_llm: bool = True) -> tuple[dict[str, str], str | None]:
+    """Fill in categories. Returns {transactionId: "rule" | "llm"} for the ones
+    categorized, and what went wrong with the AI, if anything."""
     rule_based_categorize(transactions, user_id)
     source = {t.transactionId: "rule" for t in transactions if t.category}
     uncategorized = [t for t in transactions if not t.category]
+    problem = None
 
     if run_llm and uncategorized:
-        categories = classify_transactions_batch([t.description for t in uncategorized], categories_for(user_id))
+        categories, problem = classify_transactions_batch(
+            [t.description for t in uncategorized], categories_for(user_id), get_api_key(user_id)
+        )
         for t, cat in zip(uncategorized, categories):
             if cat:
                 t.category = cat
                 source[t.transactionId] = "llm"
-    return source
+    return source, problem
 
 
 def existing_ids(user_id: int, transaction_ids: list[str]) -> set[str]:
@@ -111,8 +121,29 @@ def _deserialize(row: dict, user_id: int) -> Transaction:
         account=row["account"],
         sourceFile=row["source_file"],
         category=row["category"],
+        # Edited in the review: rule re-runs leave it alone, like any category picked by hand.
+        is_manual_category=row["category_source"] == MANUAL_SOURCE,
         user_id=user_id,
     )
+
+
+def apply_edits(rows: list[dict], edits: dict[str, dict] | None) -> list[dict]:
+    """The staged rows with the review's edits applied. An edit holds only the
+    fields that changed (date, description, amount, category; category None =
+    uncategorized). The ID stays, so re-uploading the file won't duplicate it."""
+    if not edits:
+        return rows
+    result = []
+    for row in rows:
+        edit = edits.get(row["id"])
+        if edit:
+            row = {**row, **edit}
+            if "amount" in edit:
+                row["type"] = (TransactionType.CREDIT if edit["amount"] > 0 else TransactionType.DEBIT).value
+            if "category" in edit:
+                row["category_source"] = MANUAL_SOURCE if edit["category"] else None
+        result.append(row)
+    return result
 
 
 def stage_import(user_id: int, files: list[tuple[str, str]], run_llm: bool | None = None) -> dict:
@@ -145,11 +176,14 @@ def stage_import(user_id: int, files: list[tuple[str, str]], run_llm: bool | Non
         staged.extend((index, t) for t in new)
 
     # Categorize only the rows that would be added, all files in one go.
-    sources = categorize_transactions([t for _, t in staged], user_id, run_llm=run_llm)
+    sources, ai_problem = categorize_transactions([t for _, t in staged], user_id, run_llm=run_llm)
     rows = [_serialize(t, index, sources.get(t.transactionId)) for index, t in staged]
 
     import_id = _save_staged(user_id, file_results, rows)
-    return {"import_id": import_id, "files": file_results, "transactions": rows}
+    ai_warning = None
+    if ai_problem:
+        ai_warning = {"message": ai_problem, "uncategorized": sum(1 for _, t in staged if not t.category)}
+    return {"import_id": import_id, "files": file_results, "transactions": rows, "ai_warning": ai_warning}
 
 
 def _save_staged(user_id: int, files: list[dict], rows: list[dict]) -> str:
@@ -211,12 +245,14 @@ def summarize_commit(files: list[dict], rows: list[dict], selected: set[str], in
     return results
 
 
-def commit_import(user_id: int, import_id: str, selected_ids: list[str] | None = None) -> dict | None:
-    """Insert the staged rows (all, or only selected_ids). None if the import doesn't exist."""
+def commit_import(user_id: int, import_id: str, selected_ids: list[str] | None = None,
+                  edits: dict[str, dict] | None = None) -> dict | None:
+    """Insert the staged rows (all, or only selected_ids), with the review's
+    edits applied. None if the import doesn't exist."""
     staged = _load_staged(user_id, import_id)
     if staged is None:
         return None
-    rows = staged["transactions"]
+    rows = apply_edits(staged["transactions"], edits)
     selected = {r["id"] for r in rows} if selected_ids is None else set(selected_ids)
 
     inserted = insert_transactions([_deserialize(r, user_id) for r in rows if r["id"] in selected])
@@ -224,3 +260,53 @@ def commit_import(user_id: int, import_id: str, selected_ids: list[str] | None =
 
     files = summarize_commit(staged["files"], rows, selected, inserted)
     return {"files": files, "added": len(inserted)}
+
+
+def count_uncategorized(user_id: int) -> int:
+    with engine.connect() as conn:
+        return conn.execute(
+            text("SELECT COUNT(*) FROM transactions WHERE user_id = :user_id AND (category IS NULL OR category = '')"),
+            {"user_id": user_id},
+        ).scalar()
+
+
+def categorize_uncategorized(user_id: int) -> dict:
+    """Run the rules, then the AI, on imported transactions with no category.
+    Transactions that already have one are never touched."""
+    with engine.connect() as conn:
+        found = conn.execute(
+            text("""
+                SELECT transactionId, description FROM transactions
+                WHERE user_id = :user_id AND (category IS NULL OR category = '')
+            """),
+            {"user_id": user_id},
+        ).all()
+    transactions = [SimpleNamespace(transactionId=r[0], description=r[1], category=None) for r in found]
+
+    llm_on = settings.ENABLE_LLM_CATEGORIZATION
+    sources, problem = categorize_transactions(transactions, user_id, run_llm=llm_on)
+    if not llm_on and len(sources) < len(transactions):
+        problem = "AI categorization is turned off (ENABLE_LLM_CATEGORIZATION in .env)."
+
+    updates = [
+        {"category": t.category, "id": t.transactionId, "user_id": user_id}
+        for t in transactions if t.category
+    ]
+    if updates:
+        with engine.connect() as conn:
+            conn.execute(
+                # Rechecks for no category, in case one was set by hand while the AI was working.
+                text("""
+                    UPDATE transactions SET category = :category, is_manual_category = FALSE
+                    WHERE transactionId = :id AND user_id = :user_id AND (category IS NULL OR category = '')
+                """),
+                updates,
+            )
+            conn.commit()
+    return {
+        "total": len(transactions),
+        "categorized": len(updates),
+        "by_rule": sum(1 for s in sources.values() if s == "rule"),
+        "by_ai": sum(1 for s in sources.values() if s == "llm"),
+        "problem": problem,
+    }

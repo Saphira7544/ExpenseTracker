@@ -126,7 +126,8 @@ def usage(user_id: int, names: list[str]) -> dict[str, dict]:
                 WHERE user_id = :user_id AND category = ANY(:names) GROUP BY category"""),
             ("roles", """
                 SELECT category, COUNT(*) FROM user_settings,
-                    UNNEST(income_categories || investment_categories || ignored_categories) AS category
+                    UNNEST(income_categories || investment_categories || ignored_categories
+                           || occasional_categories) AS category
                 WHERE user_id = :user_id AND category = ANY(:names) GROUP BY category"""),
         ]:
             for category, count in conn.execute(text(sql), {"user_id": user_id, "names": names}).all():

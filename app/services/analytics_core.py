@@ -12,6 +12,11 @@ currency, plus (after conversion) `value` in the display currency and a
                  earned, spent nor invested)
 - spending    -> everything else
 
+Spending lines in an *occasional* category (default: Travel) also get
+`occasional` = True: sporadic spending that isn't part of a normal month. It
+still counts in expenses everywhere; totals() reports it separately too, so
+the dashboard can show regular spending and what trips take on top.
+
 Spending is *netted per category*: a positive amount in a spending category
 (a refund, or someone paying you back) reduces that category instead of
 counting as income. E.g. splitting a 100 grocery bill into 50 Groceries +
@@ -58,7 +63,8 @@ def build_lines(transactions: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFram
     return lines
 
 
-def classify(lines: pd.DataFrame, income_categories, investment_categories, ignored_categories=()) -> pd.DataFrame:
+def classify(lines: pd.DataFrame, income_categories, investment_categories, ignored_categories=(),
+             occasional_categories=()) -> pd.DataFrame:
     lines = lines.copy()
     category = lines["category"]
     lines["kind"] = np.select(
@@ -68,6 +74,7 @@ def classify(lines: pd.DataFrame, income_categories, investment_categories, igno
         [IGNORED, INCOME, INVESTMENT],
         default=SPENDING,
     )
+    lines["occasional"] = (lines["kind"] == SPENDING) & category.isin(list(occasional_categories))
     return lines
 
 
@@ -79,17 +86,28 @@ def _sum(lines: pd.DataFrame, kind: str) -> float:
     return float(lines.loc[lines["kind"] == kind, "value"].sum())
 
 
+def _rate(saved: float, income: float) -> float:
+    return round(saved / income * 100, 1) if income > 0 else 0
+
+
 def totals(lines: pd.DataFrame) -> dict:
     income = _sum(lines, INCOME)
     expenses = _sum(lines, SPENDING)        # net spending, normally negative
     invested = -_sum(lines, INVESTMENT)     # money put into investments
     net = income + expenses                 # investments count as saved
+    # Occasional spending (trips) apart: what a normal month leaves, before it.
+    occasional = float(lines.loc[(lines["kind"] == SPENDING) & lines["occasional"], "value"].sum())         if "occasional" in lines else 0.0
+    regular = expenses - occasional
     return {
         "income": _r(income),
         "expenses": _r(expenses),
         "invested": _r(invested),
         "net": _r(net),
-        "savings_rate": round(net / income * 100, 1) if income > 0 else 0,
+        "savings_rate": _rate(net, income),
+        "regular_expenses": _r(regular),
+        "occasional": _r(occasional),       # negative, like expenses
+        "net_regular": _r(income + regular),
+        "savings_rate_regular": _rate(income + regular, income),
     }
 
 
@@ -107,7 +125,7 @@ def trend(lines: pd.DataFrame, fmt: str) -> list[dict]:
 
 def savings_rate_trend(trend_rows: list[dict]) -> list[dict]:
     return [
-        {"period": r["period"], "savings_rate": r["savings_rate"], "net": r["net"], "income": r["income"]}
+        {k: r[k] for k in ("period", "savings_rate", "net", "income", "savings_rate_regular", "net_regular")}
         for r in trend_rows
     ]
 
@@ -231,9 +249,26 @@ def monthly_average(lines: pd.DataFrame, current_month: str) -> dict | None:
         "from": first,
         "to": last,
         "left_out": sorted(set(period[period >= current_month])),
-        "income": _r(t["income"] / months),
-        "expenses": _r(t["expenses"] / months),
-        "invested": _r(t["invested"] / months),
-        "net": _r(t["net"] / months),
-        "savings_rate": t["savings_rate"],  # a ratio: the same over the whole window
+        **{k: _r(t[k] / months) for k in
+           ("income", "expenses", "invested", "net", "regular_expenses", "occasional", "net_regular")},
+        # Ratios: the same over the whole window.
+        "savings_rate": t["savings_rate"],
+        "savings_rate_regular": t["savings_rate_regular"],
     }
+
+
+def occasional_lines(lines: pd.DataFrame, limit: int = 12) -> list[dict]:
+    """The biggest occasional spending lines (trips), largest first."""
+    occasional = lines[(lines["kind"] == SPENDING) & lines["occasional"]]
+    biggest = occasional.sort_values("value", kind="stable").head(limit)   # most negative first
+    return [
+        {
+            "transaction_id": r.transaction_id,
+            "date": r.date.date().isoformat(),
+            "description": r.description,
+            "category": r.category,
+            "spent": _r(-r.value),
+        }
+        for r in biggest.itertuples(index=False)
+        if r.value < 0
+    ]

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from typing import Optional
 from app.services.categories import unknown_categories
+from app.services.ingestion import categorize_uncategorized, count_uncategorized
 from app.core.dependencies import get_current_user
 from app.services.transactions import (
     get_transactions, get_categories, get_accounts, update_transaction_category,
@@ -132,6 +133,17 @@ def list_transactions(
         user["id"], account, category, search, date_from, date_to,
         amount_sign, min_amount, max_amount, split_status, limit, offset
     )
+
+@router.get("/api/transactions/uncategorized-count")
+def uncategorized_count(user: dict = Depends(get_current_user)):
+    return {"count": count_uncategorized(user["id"])}
+
+
+@router.post("/api/transactions/categorize-uncategorized")
+def categorize_the_uncategorized(user: dict = Depends(get_current_user)):
+    """Rules, then the AI, on transactions with no category; never touches the others."""
+    return categorize_uncategorized(user["id"])
+
 
 @router.get("/api/transactions/filters")
 def filters(user: dict = Depends(get_current_user)):

@@ -53,6 +53,8 @@ class Settings:
     COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true").lower() == "true"
 
     ENABLE_LLM_CATEGORIZATION = os.getenv("ENABLE_LLM_CATEGORIZATION", "true").lower() == "true"
+    # Used when a user hasn't saved their own key in Settings.
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 
     # Outgoing email (password reset links). Gmail: smtp.gmail.com, port 587,
     # your address as user and an "app password" (not your normal password).

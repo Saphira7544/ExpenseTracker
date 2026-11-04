@@ -18,6 +18,11 @@ def create_settings_tables():
             ALTER TABLE user_settings
             ADD COLUMN IF NOT EXISTS ignored_categories TEXT[] NOT NULL DEFAULT '{Internal}'
         """))
+        # Spending that isn't part of a normal month (trips): the dashboard shows it apart.
+        conn.execute(text("""
+            ALTER TABLE user_settings
+            ADD COLUMN IF NOT EXISTS occasional_categories TEXT[] NOT NULL DEFAULT '{Travel}'
+        """))
 
         # Description substrings skipped on import (internal transfers etc.).
         # bank NULL = applies to every bank.
@@ -85,6 +90,16 @@ def create_settings_tables():
         conn.execute(text("""
             CREATE UNIQUE INDEX IF NOT EXISTS custom_categories_user_name
             ON custom_categories (user_id, LOWER(name))
+        """))
+
+        # A user's own AI key, encrypted (app/core/crypto.py). Saved and removed
+        # in Settings, and never sent back to the browser.
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS user_ai_keys (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                encrypted_key TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
         """))
 
         # One-time data steps that already ran (see legacy_db/migrations.py).

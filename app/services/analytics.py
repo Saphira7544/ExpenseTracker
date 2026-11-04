@@ -52,13 +52,14 @@ def _prepare(user_id: int, currency: str | None) -> tuple[pd.DataFrame, pd.DataF
         lines = lines.dropna(subset=["value"])
 
     lines = core.classify(lines, settings["income_categories"], settings["investment_categories"],
-                          settings["ignored_categories"])
+                          settings["ignored_categories"], settings["occasional_categories"])
     meta = {
         "currency": target,
         "available_currencies": SUPPORTED_DISPLAY_CURRENCIES,
         "converted_currencies": sorted(set(tx["currency"]) - {target}),
         "fx_missing": missing,
         "fx_source": fx.SOURCE_LABEL,
+        "occasional_categories": settings["occasional_categories"],
     }
     return lines, tx, meta
 
@@ -87,6 +88,7 @@ def get_overview_bundle(user_id: int, year: str | None = None, currency: str | N
         "selected_year": selected_year,
         "summary": core.totals(scoped),
         "monthly_average": core.monthly_average(scoped, date.today().strftime("%Y-%m")),
+        "occasional_lines": core.occasional_lines(scoped),
         "income_expenses_trend": trend,
         "savings_rate_trend": core.savings_rate_trend(trend),
         "category_heatmap": core.category_heatmap(scoped),

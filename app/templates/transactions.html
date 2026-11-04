@@ -5,8 +5,12 @@
 
 <div class="page-header">
   <h1>Transactions</h1>
-  <button class="primary" id="addTxBtn"><i class="fa-solid fa-plus"></i>Add transaction</button>
+  <div class="header-actions">
+    <button class="secondary" id="aiCategorizeBtn" hidden><i class="fa-solid fa-wand-magic-sparkles"></i><span id="aiCategorizeLabel"></span></button>
+    <button class="primary" id="addTxBtn"><i class="fa-solid fa-plus"></i>Add transaction</button>
+  </div>
 </div>
+<div class="ai-warning" id="aiCategorizeResult" role="status" hidden></div>
 
 <div class="card">
   <div class="filters-grid">
@@ -165,9 +169,9 @@
     </div>
     <p class="dialog-note" id="splitDescription"></p>
     <p class="split-totals">Total <strong id="splitTotal"></strong> · allocated <strong id="splitAllocated">0.00</strong> · left <strong id="splitLeft"></strong></p>
+    <div class="split-guide" id="splitGuide"></div>
     <div id="splitRows"></div>
     <button class="secondary" id="addSplitRow"><i class="fa-solid fa-plus"></i> Add part</button>
-    <p class="small-muted" style="margin:6px 0 0;">A negative amount goes the other way, e.g. on a repayment, your share of something the other person paid.</p>
     <label class="split-remainder">Whatever is left goes to
       <select id="remainderCategory"></select>
     </label>
@@ -283,7 +287,61 @@ function rowHtml(tx) {
   `;
 }
 
+// ---------- Categorize the uncategorized (e.g. when the AI couldn't run at upload) ----------
+let uncategorizedCount = 0;
+
+async function refreshUncategorized() {
+  const res = await fetch("/api/transactions/uncategorized-count");
+  if (!res.ok) return;
+  uncategorizedCount = (await res.json()).count;
+  const n = uncategorizedCount;
+  document.getElementById("aiCategorizeLabel").textContent = `Categorize ${n} uncategorized with AI`;
+  document.getElementById("aiCategorizeBtn").hidden = n === 0;
+}
+
+function showAiResult(data) {
+  const el = document.getElementById("aiCategorizeResult");
+  const left = data.total - data.categorized;
+  const parts = [];
+  if (data.by_ai) parts.push(`${data.by_ai} by the AI`);
+  if (data.by_rule) parts.push(`${data.by_rule} by your rules`);
+  const headline = data.categorized
+    ? `Categorized ${data.categorized} of ${data.total} transaction${data.total === 1 ? "" : "s"} (${parts.join(", ")}).`
+    : "No transactions were categorized.";
+  const note = data.problem
+    ? `<p>${esc(data.problem)} <a href="/settings#ai">Open AI settings</a></p>`
+    : left ? `<p>The AI left ${left} without a category: pick those yourself.</p>` : "";
+  el.innerHTML = `<strong>${esc(headline)}</strong>${note}`;
+  el.classList.toggle("done", !data.problem && !left);
+  el.hidden = false;
+}
+
+document.getElementById("aiCategorizeBtn").onclick = async () => {
+  const n = uncategorizedCount;
+  if (!confirm(`Categorize ${n} transaction${n === 1 ? "" : "s"} with no category? Your rules go first; for the rest, descriptions are sent to OpenAI. Transactions that already have a category aren't touched.`)) return;
+  const btn = document.getElementById("aiCategorizeBtn");
+  const label = document.getElementById("aiCategorizeLabel");
+  btn.disabled = true;
+  label.textContent = "Categorizing…";
+  try {
+    const res = await fetch("/api/transactions/categorize-uncategorized", { method: "POST" });
+    if (res.ok) {
+      showAiResult(await res.json());
+    } else {
+      showAiResult({ total: n, categorized: 0, by_ai: 0, by_rule: 0, problem: `The request failed (${res.status}). Details are in logs/server.log.` });
+    }
+  } catch (e) {
+    showAiResult({ total: n, categorized: 0, by_ai: 0, by_rule: 0, problem: "The app didn't respond." });
+  } finally {
+    btn.disabled = false;
+    await refreshUncategorized();
+    await loadFilters();
+    loadTransactions();
+  }
+};
+
 async function loadTransactions() {
+  refreshUncategorized();
   const params = new URLSearchParams();
   const search = document.getElementById("searchInput").value;
   const account = document.getElementById("accountFilter").value;
@@ -574,7 +632,26 @@ function updateAllocatedDisplay() {
 }
 
 // existingParts: the current split when editing (null for a new split).
+// Which sign to use depends on the direction of the money, so say it for this transaction.
+function splitGuide(amount) {
+  const paid = amount < 0;
+  return `
+    <strong>${paid ? "You paid this (money out)" : "You received this (money in)"}. Which sign to use:</strong>
+    <dl>
+      <dt class="amount-positive">Positive</dt>
+      <dd>${paid
+        ? "Your spending, e.g. your share of what someone paid for you (Splitwise: <em>they lent you</em>)"
+        : "Money coming back, e.g. someone's share of what you paid (Splitwise: <em>you lent them</em>)"}</dd>
+      <dt class="amount-negative">Negative</dt>
+      <dd>${paid
+        ? "Money coming back, e.g. someone's share of what you paid (Splitwise: <em>you lent them</em>)"
+        : "Your spending, e.g. your share of what someone paid for you (Splitwise: <em>they lent you</em>)"}</dd>
+    </dl>
+    <p>Settling up? <em>Left</em> should end at 0.00.</p>`;
+}
+
 function openSplitDialog(tx, existingParts = null) {
+  document.getElementById("splitGuide").innerHTML = splitGuide(parseFloat(tx.amount));
   currentSplitId = tx.transactionid;
   currentSplitAmount = Math.abs(parseFloat(tx.amount));
   const editing = Array.isArray(existingParts) && existingParts.length > 0;

@@ -3,7 +3,7 @@ from pydantic import BaseModel, field_validator
 from app.core.categories import CATEGORIES, CATEGORY_COLORS, SHEET_GROUPS, SHEET_FALLBACK_GROUP
 from app.core.dependencies import get_current_user
 from app.services import categories as service
-from app.services.settings import get_settings, ROLE_KEYS
+from app.services.settings import get_settings, NOT_SPENDING_KEYS
 
 router = APIRouter()
 
@@ -41,7 +41,7 @@ def categories_page_data(user: dict = Depends(get_current_user)):
     group_of = {c: g["name"] for g in SHEET_GROUPS for c in g["categories"]}
     # Income, investment and ignored categories aren't spending, so no sheet group applies.
     settings = get_settings(user["id"])
-    not_spending = {c for key in ROLE_KEYS for c in settings[key]}
+    not_spending = {c for key in NOT_SPENDING_KEYS for c in settings[key]}
     built_in = [
         {"name": c, "color": CATEGORY_COLORS[c], **used[c],
          "sheet_group": None if c in not_spending else group_of.get(c, SHEET_FALLBACK_GROUP)}

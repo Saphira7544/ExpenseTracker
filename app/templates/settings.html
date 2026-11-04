@@ -27,16 +27,34 @@
     invested instead of spent. <strong>Ignored</strong> categories are left out of every total: use them
     for money moving between your own accounts or currencies (e.g. <em>Internal</em>). Every other category
     is spending, netted per category: money coming back (a refund, or someone paying you back) reduces
-    that category instead of counting as income.
+    that category instead of counting as income. <strong>Occasional</strong> categories are spending too,
+    but not part of a normal month (e.g. <em>Travel</em>): the Dashboard shows them apart from your
+    regular expenses, so you can see what you save in a normal month and how much they take out of it.
   </p>
   <table>
-    <thead><tr><th>Category</th><th>Income</th><th>Investment</th><th>Ignored</th></tr></thead>
+    <thead><tr><th>Category</th><th>Income</th><th>Investment</th><th>Ignored</th><th>Occasional</th></tr></thead>
     <tbody id="categoryRolesBody"></tbody>
   </table>
   <div style="margin-top:12px;">
     <button class="primary" id="saveRolesBtn">Save</button>
     <span id="rolesStatus" style="font-size:13px; margin-left:8px;"></span>
   </div>
+</div>
+
+<div class="card" id="ai">
+  <h1 style="font-size:16px;">AI categorization</h1>
+  <p style="font-size:13px; color:#6b7280;">
+    Transactions your rules don't match are sent to OpenAI to suggest a category (only their descriptions).
+    Once saved, your key is stored encrypted and can't be seen or copied here: to change it, paste a new one.
+  </p>
+  <p id="aiKeyStatus" style="font-size:13px; margin-top:8px; font-weight:600;"></p>
+  <form id="aiKeyForm" autocomplete="off" style="display:flex; gap:8px; margin-top:8px;">
+    <input type="password" id="aiKeyInput" autocomplete="new-password" spellcheck="false"
+           placeholder="Paste your OpenAI API key" aria-label="OpenAI API key">
+    <button class="primary" type="submit" id="aiKeySaveBtn">Save</button>
+    <button class="danger" type="button" id="aiKeyRemoveBtn" hidden>Remove</button>
+  </form>
+  <p id="aiKeyMessage" role="status" style="font-size:13px; margin-top:8px;"></p>
 </div>
 
 <div class="card">
@@ -177,10 +195,11 @@ function renderCategoryRoles() {
       <td><input type="checkbox" class="role-income" value="${esc(c)}" ${SETTINGS.income_categories.includes(c) ? "checked" : ""}></td>
       <td><input type="checkbox" class="role-investment" value="${esc(c)}" ${SETTINGS.investment_categories.includes(c) ? "checked" : ""}></td>
       <td><input type="checkbox" class="role-ignored" value="${esc(c)}" ${SETTINGS.ignored_categories.includes(c) ? "checked" : ""}></td>
+      <td><input type="checkbox" class="role-occasional" value="${esc(c)}" ${SETTINGS.occasional_categories.includes(c) ? "checked" : ""}></td>
     </tr>
   `).join("");
 
-  // A category has at most one role: income, investment or ignored.
+  // A category has at most one role: income, investment, ignored or occasional.
   tbody.querySelectorAll("input[type=checkbox]").forEach(box => {
     box.onchange = () => {
       if (!box.checked) return;
@@ -199,6 +218,7 @@ document.getElementById("saveRolesBtn").onclick = async () => {
       income_categories: checked("role-income"),
       investment_categories: checked("role-investment"),
       ignored_categories: checked("role-ignored"),
+      occasional_categories: checked("role-occasional"),
     }),
   });
   if (res.ok) {
@@ -207,6 +227,76 @@ document.getElementById("saveRolesBtn").onclick = async () => {
   } else {
     status.style.color = "#dc2626";
     status.textContent = (await res.json()).detail || "Could not save.";
+  }
+};
+
+// ---------- AI key: the browser only ever learns whether there is one ----------
+function renderAiKey(status) {
+  const el = document.getElementById("aiKeyStatus");
+  if (status.source === "saved") {
+    const day = new Date(status.saved_at).toLocaleDateString(undefined, { dateStyle: "medium" });
+    el.textContent = `✓ Your key is saved (${day}).`;
+    el.style.color = "#15803d";
+  } else if (status.unreadable) {
+    el.textContent = "Your saved key can no longer be read (the app's secret key changed). Paste it again.";
+    el.style.color = "#dc2626";
+  } else if (status.source === "env") {
+    el.textContent = "Using the key from the .env file. Saving one here replaces it.";
+    el.style.color = "#475569";
+  } else {
+    el.textContent = "No key set up: the AI won't categorize anything until you add one.";
+    el.style.color = "#b45309";
+  }
+  document.getElementById("aiKeyRemoveBtn").hidden = status.source !== "saved" && !status.unreadable;
+}
+
+function showAiMessage(text, color) {
+  const el = document.getElementById("aiKeyMessage");
+  el.textContent = text;
+  el.style.color = color;
+}
+
+async function loadAiKey() {
+  const res = await fetch("/api/settings/ai-key");
+  if (res.ok) renderAiKey(await res.json());
+}
+
+document.getElementById("aiKeyForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("aiKeyInput");
+  const btn = document.getElementById("aiKeySaveBtn");
+  btn.disabled = true;
+  showAiMessage("Checking the key with OpenAI…", "#475569");
+  try {
+    const res = await fetch("/api/settings/ai-key", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: input.value }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showAiMessage(typeof body.detail === "string" ? body.detail : "Couldn't save the key.", "#dc2626");
+      return;
+    }
+    input.value = "";
+    renderAiKey(body);
+    if (body.warning) showAiMessage(`Saved, but: ${body.warning}`, "#b45309");
+    else showAiMessage("Saved. The key works.", "#15803d");
+  } catch (err) {
+    showAiMessage("Couldn't save the key: the app didn't respond.", "#dc2626");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("aiKeyRemoveBtn").onclick = async () => {
+  if (!confirm("Remove your saved OpenAI key?")) return;
+  const res = await fetch("/api/settings/ai-key", { method: "DELETE" });
+  if (res.ok) {
+    renderAiKey(await res.json());
+    showAiMessage("Removed.", "#475569");
+  } else {
+    showAiMessage("Couldn't remove the key.", "#dc2626");
   }
 };
 
@@ -222,5 +312,6 @@ function renderCurrency() {
 }
 
 loadSettings();
+loadAiKey();
 </script>
 {% endblock %}

@@ -53,7 +53,7 @@ DB_PASSWORD=your-postgres-password
 #   .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(48))"
 APP_SECRET_KEY=paste-it-here
 
-# Optional: automatic categorization with OpenAI (costs a little per upload)
+# Optional: a default OpenAI key. You can also save one in Settings > AI categorization.
 OPENAI_API_KEY=your-openai-key
 ```
 
@@ -97,14 +97,15 @@ Then sign in. Other people who register can be approved by an admin without SQL:
 ## 3. Using the app, page by page
 
 ### Upload Files
-Drop one or more bank CSV files and click **Review upload**. Nothing is added yet: a dialog shows, per file, how many rows were found, excluded, **already imported** and **new**, and lists the new rows with their suggested category (from your rules, or the AI). Untick any row you don't want, then **Import**.
+Drop one or more bank CSV files and click **Review upload**. Nothing is added yet: a dialog shows, per file, how many rows were found, excluded, **already imported** and **new**, and lists the new rows with their suggested category (from your rules, or the AI). If the AI couldn't run (no credits, a rejected key, no connection), the dialog says so at the top. Fix anything directly in the table (date, description, category, amount), untick any row you don't want, then **Import**. A category you pick here counts as *manual*: rules won't change it.
 
 ### Transactions
 Search and filter everything you've imported.
 - **Pencil**: edit any transaction (imported ones too). **Add transaction** adds one by hand, e.g. cash.
 - **Category picker** in each row for quick changes; select several rows to change their category or **delete** them in one go.
-- **Scissors**: split a transaction across categories (e.g. a shared grocery bill). Undo it with the arrow icon.
+- **Scissors**: split a transaction across categories (e.g. a shared grocery bill). The dialog says which sign to use, because it depends on whether the money went out or came in. Undo it with the arrow icon.
 - A category you set by hand is marked *manual* and rules won't change it; the wand icon hands it back to the rules.
+- **Categorize N uncategorized with AI** (top of the page, when there are any) runs your rules and then the AI on transactions with no category, e.g. if the AI couldn't run when you uploaded them. It never touches ones that already have a category.
 
 ### Rules
 Keyword rules: "description contains `migros` → Groceries". The longest matching keyword wins. *Preview* shows what re-running your rules would change before you apply it.
@@ -128,6 +129,7 @@ Add your own categories next to the built-in ones: a name, a colour, and which *
 ### Settings
 - **Import exclusions**: text that marks rows to skip when importing, per bank, e.g. transfers between your own accounts or card top-ups (`Payment to card`).
 - **How categories count**: which categories are income, investments, or ignored.
+- **AI categorization**: paste your OpenAI key. It's checked with OpenAI, stored encrypted, and can't be viewed or copied afterwards; only replaced or removed. If `APP_SECRET_KEY` changes, it has to be saved again.
 - **Display currency**, and **App** (start at sign-in, restart, stop).
 
 ### Banks
@@ -144,7 +146,7 @@ Edit `.env` in the project folder, then restart the app (Settings > App > Restar
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Yes (or `DATABASE_URL`) | Your PostgreSQL database. |
 | `DATABASE_URL` | Instead of the above | One connection string, e.g. from a hosting provider. |
 | `APP_SECRET_KEY` | **Yes** | Protects sign-in sessions. The app won't start without it. |
-| `OPENAI_API_KEY` | Optional | AI categorization of rows your rules don't match. |
+| `OPENAI_API_KEY` | Optional | AI categorization of rows your rules don't match, for users who haven't saved a key in Settings. |
 | `ENABLE_LLM_CATEGORIZATION` | Optional | `false` to turn the AI off (default `true`). |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Optional | Sending password reset emails (see below). |
 | `APP_BASE_URL` | Optional | The app's address used in emailed links. Set automatically by the Start-menu app. |
@@ -242,7 +244,7 @@ To copy your local data across, back it up with `pg_dump` (above) and load it wi
 | Rows you don't want keep getting imported | Add the text that identifies them under *Settings > Import exclusions*. |
 | *No exchange rate available* on the dashboards | Exchange rates are downloaded from the ECB; check the internet connection and reload. |
 | Forgot your password | *Forgot password?* on the sign-in page. Without email set up, the link is in `logs/server.log`. |
-| AI categorization doesn't happen | Check `OPENAI_API_KEY` in `.env` and that `ENABLE_LLM_CATEGORIZATION` isn't `false`, then restart. |
+| AI categorization doesn't happen | The review dialog on upload says what went wrong. Check your key in *Settings > AI categorization*, and that `ENABLE_LLM_CATEGORIZATION` isn't `false`. |
 
 ---
 

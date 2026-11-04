@@ -1,94 +1,113 @@
-function renderOverviewSummaryCards(summary) {
-    const el = document.getElementById('overview-summary-cards');
-    if (!summary) {
-        el.innerHTML = '<div class="summary-card"><div class="label">No data</div><div class="value">—</div></div>';
-        return;
-    }
-    el.innerHTML = summaryCards(summary);
-}
-
-/** Income, expenses, invested, net saved and savings rate; `per` labels the amounts (e.g. " / month"). */
-function summaryCards(summary, per = '') {
-    return `
-        <div class="summary-card income">
-            <div class="label">Income${per}</div>
-            <div class="value">${fmtMoney(summary.income)}</div>
-        </div>
-        <div class="summary-card expenses">
-            <div class="label">Expenses${per}</div>
-            <div class="value">${fmtMoney(-summary.expenses)}</div>
-            <div class="sub-value">Net of refunds &amp; repayments</div>
-        </div>
-        <div class="summary-card invested">
-            <div class="label">Invested${per}</div>
-            <div class="value">${fmtMoney(summary.invested)}</div>
-        </div>
-        <div class="summary-card net">
-            <div class="label">Net Saved${per}</div>
-            <div class="value">${fmtMoney(summary.net)}</div>
-        </div>
-        <div class="summary-card rate">
-            <div class="label">Savings Rate</div>
-            <div class="value">${summary.savings_rate.toFixed(1)}%</div>
-        </div>
-    `;
-}
-
 function monthLabel(period, opts = { month: 'short', year: 'numeric' }) {
     const [y, m] = period.split('-').map(Number);
     return new Date(y, m - 1, 1).toLocaleDateString(undefined, opts);
 }
 
-// The same cards, per month on average over the complete months: the month
-// in progress is left out, its expenses aren't all in yet.
-function renderMonthlyAverage(avg) {
-    const block = document.getElementById('monthly-average');
-    block.hidden = !avg;
-    if (!avg) return;
-    const range = avg.from === avg.to ? monthLabel(avg.from)
-        : `${monthLabel(avg.from)} – ${monthLabel(avg.to)}`;
-    const notes = [`${range} · ${avg.months} complete month${avg.months === 1 ? '' : 's'}`];
-    if (avg.left_out.length) {
-        notes.push(`${avg.left_out.map(p => monthLabel(p, { month: 'long', year: 'numeric' })).join(', ')} ` +
-                   `left out until ${avg.left_out.length === 1 ? 'it ends' : 'they end'}`);
+// Occasional categories (Settings, default Travel): spending that isn't part of a
+// normal month. Shown apart from the regular expenses; OCCASIONAL is null when none.
+let OCCASIONAL = null;
+
+function setupOccasional(data) {
+    const names = data.occasional_categories || [];
+    OCCASIONAL = names.length ? {
+        names,
+        label: names.join(' & '),
+        color: categoryColor(names[0]),
+    } : null;
+}
+
+/**
+ * One row of cards: each shows the total for the period and, underneath, the
+ * average per month over the complete months (the month in progress is left
+ * out: its expenses aren't all in yet). `avg` is null when there's no
+ * complete month, and then only the totals show.
+ */
+function renderOverviewSummaryCards(summary, avg) {
+    const el = document.getElementById('overview-summary-cards');
+    const note = document.getElementById('summary-note');
+    if (!summary) {
+        el.innerHTML = '<div class="summary-card"><div class="label">No data</div><div class="value">—</div></div>';
+        note.textContent = '';
+        return;
     }
-    document.getElementById('monthly-average-note').textContent = notes.join(' · ');
-    document.getElementById('monthly-average-cards').innerHTML = summaryCards(avg, ' / month');
+    const perMonth = (value, isRate = false) => !avg ? '' : `
+        <div class="per-month">
+            <span class="per-month-label">${isRate ? 'Complete months' : 'Per month'}</span>
+            <span class="per-month-value">${isRate ? `${value.toFixed(1)}%` : fmtMoney(value)}</span>
+        </div>`;
+    const card = (cls, label, value, avgValue, sub = '', isRate = false, style = '') => `
+        <div class="summary-card ${cls}" ${style ? `style="${style}"` : ''}>
+            <div class="label">${label}</div>
+            <div class="value">${value}</div>
+            ${sub ? `<div class="sub-value" title="${esc(sub.replace(/<[^>]+>/g, ''))}">${sub}</div>` : ''}
+            ${perMonth(avgValue, isRate)}
+        </div>`;
+
+    const trips = OCCASIONAL ? esc(OCCASIONAL.label) : '';
+    const cards = [card('income', 'Income', fmtMoney(summary.income), avg?.income)];
+    if (OCCASIONAL) {
+        cards.push(
+            card('expenses', 'Regular Expenses', fmtMoney(-summary.regular_expenses), avg && -avg.regular_expenses,
+                 `Without ${trips.toLowerCase()}`),
+            card('occasional', trips, fmtMoney(-summary.occasional), avg && -avg.occasional,
+                 'Apart from regular', false, `--occasional-colour:${OCCASIONAL.color}`));
+    } else {
+        cards.push(card('expenses', 'Expenses', fmtMoney(-summary.expenses), avg && -avg.expenses,
+                        'Net of refunds &amp; repayments'));
+    }
+    cards.push(
+        card('invested', 'Invested', fmtMoney(summary.invested), avg?.invested),
+        card('net', 'Net Saved', fmtMoney(summary.net), avg?.net,
+             OCCASIONAL ? `${fmtMoney(summary.net_regular)} before ${trips.toLowerCase()}` : 'Income − expenses'),
+        card('rate', 'Savings Rate', `${summary.savings_rate.toFixed(1)}%`, avg?.savings_rate,
+             OCCASIONAL ? `${summary.savings_rate_regular.toFixed(1)}% before ${trips.toLowerCase()}` : '', true));
+    el.innerHTML = cards.join('');
+
+    if (!avg) {
+        note.textContent = '';
+        return;
+    }
+    const range = avg.from === avg.to ? monthLabel(avg.from) : `${monthLabel(avg.from)} – ${monthLabel(avg.to)}`;
+    let text = `Per month: average of ${avg.months} complete month${avg.months === 1 ? '' : 's'} (${range}).`;
+    if (avg.left_out.length) {
+        const months = avg.left_out.map(p => monthLabel(p, { month: 'long', year: 'numeric' })).join(', ');
+        text += ` ${months} isn't over yet, so it's left out.`;
+    }
+    note.textContent = text;
 }
 
 function renderOverviewIncomeExpensesChart(trend) {
     destroyChart('overviewIncomeExpenses');
     const ctx = document.getElementById('overviewIncomeExpensesChart');
+    const bar = (label, data, color, stack) => ({ label, data, backgroundColor: color, borderRadius: 6, stack });
+    // Regular expenses and occasional spending (trips) stack into one expenses bar.
+    const datasets = [bar('Income', trend.map(r => r.income), '#16a34a', 'income')];
+    if (OCCASIONAL) {
+        datasets.push(
+            bar('Regular expenses', trend.map(r => -r.regular_expenses), '#dc2626', 'spent'),
+            bar(OCCASIONAL.label, trend.map(r => -r.occasional), OCCASIONAL.color, 'spent'));
+    } else {
+        datasets.push(bar('Expenses', trend.map(r => -r.expenses), '#dc2626', 'spent'));
+    }
+    datasets.push(bar('Invested', trend.map(r => r.invested), '#7c3aed', 'invested'));
+
     registerChart('overviewIncomeExpenses', new Chart(ctx, {
         type: 'bar',
-        data: {
-            labels: trend.map(r => formatPeriodLabel(r.period)),
-            datasets: [
-                {
-                    label: 'Income',
-                    data: trend.map(r => r.income),
-                    backgroundColor: '#16a34a',
-                    borderRadius: 6,
-                },
-                {
-                    label: 'Expenses',
-                    data: trend.map(r => -r.expenses),
-                    backgroundColor: '#dc2626',
-                    borderRadius: 6,
-                },
-                {
-                    label: 'Invested',
-                    data: trend.map(r => r.invested),
-                    backgroundColor: '#7c3aed',
-                    borderRadius: 6,
-                },
-            ],
-        },
+        data: { labels: trend.map(r => formatPeriodLabel(r.period)), datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } },
-            scales: { y: { beginAtZero: true } },
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: c => `${c.dataset.label}: ${fmtMoney(c.parsed.y)}`,
+                        footer: items => (OCCASIONAL
+                            ? `All expenses: ${fmtMoney(-trend[items[0].dataIndex].expenses)}` : ''),
+                    },
+                },
+            },
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
         },
     }));
 }
@@ -96,35 +115,49 @@ function renderOverviewIncomeExpensesChart(trend) {
 function renderOverviewSavingsRateChart(trend) {
     destroyChart('overviewSavingsRate');
     const ctx = document.getElementById('overviewSavingsRateChart');
+    const datasets = [{
+        label: 'Savings rate',
+        data: trend.map(r => r.savings_rate),
+        // Neutral slate: a rate, not a category (violet means Investments elsewhere).
+        borderColor: '#475569',
+        backgroundColor: 'rgba(71,85,105,0.12)',
+        fill: 'origin',
+        cubicInterpolationMode: 'monotone',  // smooth, but never overshoots the data
+        borderWidth: 2,
+        pointBackgroundColor: '#475569',
+        pointRadius: 4,
+    }];
+    if (OCCASIONAL) {
+        // What a normal month would have saved: the gap to the solid line is what trips cost.
+        datasets.push({
+            label: `Before ${OCCASIONAL.label.toLowerCase()}`,
+            data: trend.map(r => r.savings_rate_regular),
+            borderColor: OCCASIONAL.color,
+            backgroundColor: OCCASIONAL.color,
+            borderDash: [6, 4],
+            borderWidth: 2,
+            fill: false,
+            cubicInterpolationMode: 'monotone',
+            pointRadius: 3,
+        });
+    }
     registerChart('overviewSavingsRate', new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: trend.map(r => formatPeriodLabel(r.period)),
-            datasets: [{
-                label: 'Savings rate (%)',
-                data: trend.map(r => r.savings_rate),
-                // Neutral slate: a rate, not a category (violet means Investments elsewhere).
-                borderColor: '#475569',
-                backgroundColor: 'rgba(71,85,105,0.12)',
-                fill: 'origin',
-                cubicInterpolationMode: 'monotone',  // smooth, but never overshoots the data
-                borderWidth: 2,
-                pointBackgroundColor: '#475569',
-                pointRadius: 4,
-            }],
-        },
+        data: { labels: trend.map(r => formatPeriodLabel(r.period)), datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { display: false },
+                legend: { display: !!OCCASIONAL, position: 'bottom' },
                 tooltip: {
                     callbacks: {
-                        label: c => `Savings rate: ${c.parsed.y.toFixed(1)}%`,
-                        afterLabel: c => [
-                            `Saved: ${fmtMoney(trend[c.dataIndex].net)}`,
-                            `Income: ${fmtMoney(trend[c.dataIndex].income)}`,
-                        ],
+                        label: c => {
+                            const r = trend[c.dataIndex];
+                            const saved = c.datasetIndex === 0 ? r.net : r.net_regular;
+                            return `${c.dataset.label}: ${c.parsed.y.toFixed(1)}% · saved ${fmtMoney(saved)}`;
+                        },
+                        footer: items => `Income: ${fmtMoney(trend[items[0].dataIndex].income)}`,
                     },
                 },
             },
@@ -141,6 +174,85 @@ function renderOverviewSavingsRateChart(trend) {
             },
         },
     }));
+}
+
+// ---------- Occasional spending (trips) on its own ----------
+
+function renderOccasionalSection(data) {
+    const section = document.getElementById('occasional-section');
+    section.hidden = !OCCASIONAL;
+    if (!OCCASIONAL) return;
+
+    const s = data.summary;
+    const avg = data.monthly_average;
+    const trend = data.income_expenses_trend;
+    const name = OCCASIONAL.label.toLowerCase();
+    document.getElementById('occasional-title').textContent = OCCASIONAL.label;
+
+    const spent = -s.occasional;
+    const allExpenses = -s.expenses;
+    const ratePoints = s.savings_rate_regular - s.savings_rate;
+    const periodWord = data.selected_year === 'all' ? 'year' : 'month';
+    const periodsWith = trend.filter(r => -r.occasional > 0.5).length;
+    const stat = (title, value, help = '') => `
+        <div class="occ-stat"><div class="occ-stat-name">${esc(title)}</div>
+            <div class="occ-stat-value">${esc(value)}</div>${help ? `<div class="occ-stat-help">${esc(help)}</div>` : ''}</div>`;
+    document.getElementById('occasional-stats').innerHTML = [
+        stat('Spent', fmtMoney(spent), `${allExpenses > 0 ? Math.round(spent / allExpenses * 100) : 0}% of all expenses`),
+        avg ? stat('Per month', fmtMoney(-avg.occasional), 'Average of complete months') : '',
+        stat('Cost to your savings rate', `${ratePoints > 0 ? '−' : ''}${Math.abs(ratePoints).toFixed(1)} pts`,
+             `${s.savings_rate_regular.toFixed(1)}% without, ${s.savings_rate.toFixed(1)}% with`),
+        stat(`${periodWord === 'year' ? 'Years' : 'Months'} with ${name}`, `${periodsWith} of ${trend.length}`),
+    ].join('');
+
+    destroyChart('occasionalChart');
+    registerChart('occasionalChart', new Chart(document.getElementById('occasionalChart'), {
+        type: 'bar',
+        data: {
+            labels: trend.map(r => formatPeriodLabel(r.period)),
+            datasets: [{
+                label: OCCASIONAL.label,
+                data: trend.map(r => -r.occasional),
+                // A bar below zero: more came back (e.g. friends paying their share) than was spent.
+                backgroundColor: trend.map(r => (-r.occasional < 0 ? '#86efac' : OCCASIONAL.color)),
+                borderRadius: 6,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: c => (c.parsed.y < 0 ? `Money back: ${fmtMoney(-c.parsed.y)}` : `Spent: ${fmtMoney(c.parsed.y)}`),
+                        afterLabel: c => {
+                            const r = trend[c.dataIndex];
+                            return -r.expenses > 0 && -r.occasional > 0
+                                ? `${Math.round(-r.occasional / -r.expenses * 100)}% of that ${periodWord}'s expenses` : '';
+                        },
+                        footer: () => (periodWord === 'month' ? 'Click to open it in Monthly' : ''),
+                    },
+                },
+            },
+            onClick: (_e, items) => {
+                const period = items.length ? trend[items[0].index].period : null;
+                if (period && /^\d{4}-\d{2}$/.test(period)) {
+                    location.href = `/monthly?month=${period}&category=${encodeURIComponent(OCCASIONAL.names[0])}`;
+                }
+            },
+            scales: { y: { beginAtZero: true } },
+        },
+    }));
+
+    const lines = data.occasional_lines;
+    document.getElementById('occasional-lines').innerHTML = lines.length ? lines.map(l => {
+        const p = new URLSearchParams({ search: l.description || '', date_from: l.date, date_to: l.date });
+        const day = new Date(`${l.date}T00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+        return `<li><span class="occ-date">${esc(day)}</span>
+            <a href="/transactions?${p}" title="${esc(l.description)}">${esc(l.description)}</a>
+            <span class="occ-amount">${fmtMoney(l.spent)}</span></li>`;
+    }).join('') : `<li class="small-muted">No ${esc(name)} spending in this period.</li>`;
 }
 
 // ---------- Category x month heatmap ----------
@@ -240,10 +352,11 @@ async function loadOverview(year) {
     setupCurrencySelect(data, () => loadOverview(document.getElementById('year-select').value));
     renderFxNotice(data);
     populateYearSelect(data.available_years, data.selected_year);
-    renderOverviewSummaryCards(data.summary);
-    renderMonthlyAverage(data.monthly_average);
+    setupOccasional(data);
+    renderOverviewSummaryCards(data.summary, data.monthly_average);
     renderOverviewIncomeExpensesChart(data.income_expenses_trend);
     renderOverviewSavingsRateChart(data.savings_rate_trend);
+    renderOccasionalSection(data);
     renderCategoryHeatmap(data.category_heatmap);
 }
 

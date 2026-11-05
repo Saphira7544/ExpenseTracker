@@ -100,7 +100,7 @@ Then sign in. Other people who register can be approved by an admin without SQL:
 Drop one or more bank CSV files and click **Review upload**. Nothing is added yet: a dialog shows, per file, how many rows were found, excluded, **already imported** and **new**, and lists the new rows with their suggested category (from your rules, or the AI). If the AI couldn't run (no credits, a rejected key, no connection), the dialog says so at the top. Fix anything directly in the table (date, description, category, amount), untick any row you don't want, then **Import**. A category you pick here counts as *manual*: rules won't change it.
 
 ### Transactions
-Search and filter everything you've imported.
+Search and filter everything you've imported. Press Enter in any filter to apply it; menus and dates apply straight away. Pick one start date to see that single day, or change the end date for a range. *Category* includes *Uncategorized*.
 - **Pencil**: edit any transaction (imported ones too). **Add transaction** adds one by hand, e.g. cash.
 - **Category picker** in each row for quick changes; select several rows to change their category or **delete** them in one go.
 - **Scissors**: split a transaction across categories (e.g. a shared grocery bill). The dialog says which sign to use, because it depends on whether the money went out or came in. Undo it with the arrow icon.

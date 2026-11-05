@@ -2,6 +2,9 @@ import uuid
 from sqlalchemy import text
 from app.db.session import engine
 
+UNCATEGORIZED = "Uncategorized"     # the filter's name for transactions with no category
+
+
 def _filter_clause(user_id, account=None, category=None, search=None, date_from=None, date_to=None,
                    amount_sign=None, min_amount=None, max_amount=None, split_status=None):
     """WHERE clause + params shared by the list and count queries."""
@@ -11,7 +14,9 @@ def _filter_clause(user_id, account=None, category=None, search=None, date_from=
     if account:
         where += " AND account = :account"
         params["account"] = account
-    if category:
+    if category == UNCATEGORIZED:
+        where += " AND (category IS NULL OR category = '')"
+    elif category:
         where += " AND category = :category"
         params["category"] = category
     if search:

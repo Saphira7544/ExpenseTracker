@@ -12,58 +12,61 @@
 </div>
 <div class="ai-warning" id="aiCategorizeResult" role="status" hidden></div>
 
-<div class="card">
-  <div class="filters-grid">
-    <div>
-      <label>Search</label>
-      <input type="text" id="searchInput" placeholder="Description...">
+<div class="card tx-filters" id="filterCard">
+  <div class="filter-main">
+    <div class="filter-search">
+      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+      <input type="search" id="searchInput" placeholder="Search descriptions, then press Enter" aria-label="Search descriptions">
     </div>
-    <div>
-      <label>Account</label>
-      <select id="accountFilter"><option value="">All</option></select>
+    <select id="accountFilter" aria-label="Account"><option value="">All accounts</option></select>
+    <select id="categoryFilter" aria-label="Category"><option value="">All categories</option></select>
+    <button type="button" class="secondary filter-more-btn" id="moreFiltersBtn" aria-expanded="false" aria-controls="moreFilters">
+      <i class="fa-solid fa-sliders" aria-hidden="true"></i> More <span class="filter-count" id="moreFiltersCount" hidden></span>
+    </button>
+  </div>
+
+  <div class="filter-dates">
+    <div class="date-presets" role="group" aria-label="Date shortcuts">
+      <button type="button" class="date-preset" data-preset="all">All dates</button>
+      <button type="button" class="date-preset" data-preset="today">Today</button>
+      <button type="button" class="date-preset" data-preset="this-month">This month</button>
+      <button type="button" class="date-preset" data-preset="last-month">Last month</button>
+      <button type="button" class="date-preset" data-preset="this-year">This year</button>
     </div>
-    <div>
-      <label>Category</label>
-      <select id="categoryFilter"><option value="">All</option></select>
+    <div class="date-range">
+      <input type="date" id="dateFrom" aria-label="From date" title="Pick one day: the end date follows. Change it for a range.">
+      <span class="date-sep" aria-hidden="true">to</span>
+      <input type="date" id="dateTo" aria-label="To date">
+      <button type="button" class="same-day-btn" id="sameDayBtn" disabled
+              title="Use the start date as the end date, to see just that day">Same day</button>
     </div>
-    <div>
-      <label>Split status</label>
+    <div class="filter-status">
+      <span class="small-muted" id="filterResultCount" aria-live="polite"></span>
+      <button type="button" class="link-clear" id="resetFilterBtn" hidden><i class="fa-solid fa-xmark" aria-hidden="true"></i> Clear filters</button>
+    </div>
+  </div>
+
+  <div class="filter-more" id="moreFilters" hidden>
+    <label>Split status
       <select id="splitFilter">
         <option value="">All</option>
         <option value="split">Split</option>
         <option value="not_split">Not split</option>
       </select>
-    </div>
-    <div>
-      <label>Amount sign</label>
+    </label>
+    <label>Direction
       <select id="signFilter">
-        <option value="">All</option>
-        <option value="positive">Positive</option>
-        <option value="negative">Negative</option>
+        <option value="">Money in and out</option>
+        <option value="positive">Money in</option>
+        <option value="negative">Money out</option>
       </select>
-    </div>
-    <div>
-      <label>Min amount</label>
-      <input type="number" id="minAmount" step="0.01" placeholder="0.00">
-    </div>
-    <div>
-      <label>Max amount</label>
-      <input type="number" id="maxAmount" step="0.01" placeholder="0.00">
-    </div>
-    <div>
-      <label>From</label>
-      <input type="date" id="dateFrom">
-    </div>
-    <div>
-      <label>To</label>
-      <input type="date" id="dateTo">
-    </div>
-    <div>
-  <button class="primary" id="filterBtn">Apply filters</button>
-  </div>
-  <div>
-    <button class="secondary" id="resetFilterBtn">Reset filters</button>
-  </div>
+    </label>
+    <label>Min amount
+      <input type="number" id="minAmount" step="0.01" min="0" placeholder="0.00">
+    </label>
+    <label>Max amount
+      <input type="number" id="maxAmount" step="0.01" min="0" placeholder="0.00">
+    </label>
   </div>
 </div>
 
@@ -243,8 +246,8 @@ async function loadFilters() {
   const accSel = document.getElementById("accountFilter");
   const catSel = document.getElementById("categoryFilter");
   const [acc, cat] = [accSel.value, catSel.value];
-  accSel.innerHTML = `<option value="">All</option>` + options(filterData.accounts, acc);
-  catSel.innerHTML = `<option value="">All</option>` + options(filterData.categories, cat);
+  accSel.innerHTML = `<option value="">All accounts</option>` + options(filterData.accounts, acc);
+  catSel.innerHTML = `<option value="">All categories</option>` + options(["Uncategorized", ...filterData.categories], cat);
 
   document.getElementById("accountOptions").innerHTML =
     filterData.accounts.map(a => `<option value="${esc(a)}"></option>`).join("");
@@ -889,23 +892,130 @@ document.getElementById("bulkApplyBtn").onclick = async () => {
 
 // ---------- Filters & pagination ----------
 
-document.getElementById("filterBtn").onclick = () => {
+// ---------- Filters: Enter or leaving a field applies them; menus and dates apply at once ----------
+const FILTER_IDS = ["searchInput", "accountFilter", "categoryFilter", "splitFilter", "signFilter",
+                    "minAmount", "maxAmount", "dateFrom", "dateTo"];
+const MORE_FILTER_IDS = ["splitFilter", "signFilter", "minAmount", "maxAmount"];
+const fromInput = document.getElementById("dateFrom");
+const toInput = document.getElementById("dateTo");
+let appliedFilters = null;
+let previousFrom = "";
+
+function filterValues() {
+  return JSON.stringify(FILTER_IDS.map(id => document.getElementById(id).value));
+}
+
+function applyFilters(force = false) {
+  if (!force && filterValues() === appliedFilters) return;
+  appliedFilters = filterValues();
   currentOffset = 0;
   loadTransactions();
+  updateFilterControls();
+}
+
+// A date input reports years while they're being typed (0002, 0020...): wait for a real one.
+function isRealDate(value) {
+  return value >= "2000-01-01" && value <= "2100-12-31";
+}
+
+// Picking a start date makes it that one day. To stays put if it's a later date you chose.
+function startDateChanged() {
+  const from = fromInput.value;
+  if (!from) {
+    if (toInput.value === previousFrom) toInput.value = "";
+    previousFrom = "";
+    return true;
+  }
+  if (!isRealDate(from)) return false;
+  if (!toInput.value || toInput.value < from || toInput.value === previousFrom) toInput.value = from;
+  previousFrom = from;
+  return true;
+}
+
+function endDateChanged() {
+  const to = toInput.value;
+  if (!to) return true;
+  if (!isRealDate(to)) return false;
+  if (fromInput.value && fromInput.value > to) {
+    fromInput.value = to;
+    previousFrom = to;
+  }
+  return true;
+}
+
+function isoDay(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function presetRange(name) {
+  const now = new Date();
+  const [y, m] = [now.getFullYear(), now.getMonth()];
+  return {
+    all: ["", ""],
+    today: [isoDay(now), isoDay(now)],
+    "this-month": [isoDay(new Date(y, m, 1)), isoDay(new Date(y, m + 1, 0))],
+    "last-month": [isoDay(new Date(y, m - 1, 1)), isoDay(new Date(y, m, 0))],
+    "this-year": [`${y}-01-01`, `${y}-12-31`],
+  }[name];
+}
+
+function updateFilterControls() {
+  document.getElementById("sameDayBtn").disabled = !isRealDate(fromInput.value) || toInput.value === fromInput.value;
+  document.querySelectorAll(".date-preset").forEach(btn => {
+    const [from, to] = presetRange(btn.dataset.preset);
+    const on = fromInput.value === from && toInput.value === to;
+    btn.classList.toggle("selected", on);
+    btn.setAttribute("aria-pressed", on);
+  });
+  const moreActive = MORE_FILTER_IDS.filter(id => document.getElementById(id).value).length;
+  const count = document.getElementById("moreFiltersCount");
+  count.textContent = moreActive;
+  count.hidden = moreActive === 0;
+  document.getElementById("resetFilterBtn").hidden = !FILTER_IDS.some(id => document.getElementById(id).value);
+}
+
+function showMoreFilters(open) {
+  document.getElementById("moreFilters").hidden = !open;
+  document.getElementById("moreFiltersBtn").setAttribute("aria-expanded", open);
+}
+
+const filterCard = document.getElementById("filterCard");
+filterCard.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !e.target.matches("input, select")) return;
+  e.preventDefault();
+  if (e.target === fromInput) startDateChanged();
+  if (e.target === toInput) endDateChanged();
+  applyFilters(true);
+});
+filterCard.addEventListener("change", (e) => {
+  const ok = e.target === fromInput ? startDateChanged() : e.target === toInput ? endDateChanged() : true;
+  if (ok) applyFilters();
+});
+// Clearing the search with its little x.
+document.getElementById("searchInput").addEventListener("search", () => applyFilters());
+
+document.querySelector(".date-presets").addEventListener("click", (e) => {
+  const btn = e.target.closest(".date-preset");
+  if (!btn) return;
+  [fromInput.value, toInput.value] = presetRange(btn.dataset.preset);
+  previousFrom = fromInput.value;
+  applyFilters();
+});
+
+document.getElementById("sameDayBtn").onclick = () => {
+  toInput.value = fromInput.value;
+  previousFrom = fromInput.value;
+  applyFilters();
+};
+
+document.getElementById("moreFiltersBtn").onclick = () => {
+  showMoreFilters(document.getElementById("moreFilters").hidden);
 };
 
 document.getElementById("resetFilterBtn").onclick = () => {
-  document.getElementById("searchInput").value = "";
-  document.getElementById("accountFilter").value = "";
-  document.getElementById("categoryFilter").value = "";
-  document.getElementById("splitFilter").value = "";
-  document.getElementById("signFilter").value = "";
-  document.getElementById("minAmount").value = "";
-  document.getElementById("maxAmount").value = "";
-  document.getElementById("dateFrom").value = "";
-  document.getElementById("dateTo").value = "";
-  currentOffset = 0;
-  loadTransactions();
+  FILTER_IDS.forEach(id => { document.getElementById(id).value = ""; });
+  previousFrom = "";
+  applyFilters();
 };
 
 // Links from other pages (e.g. Monthly's "Open in Transactions") prefill the filters.
@@ -921,10 +1031,14 @@ loadCategories().then(async () => {
     initCategorySelects();
     await loadFilters();
     applyFiltersFromUrl();
-    loadTransactions();
+    previousFrom = fromInput.value;
+    showMoreFilters(MORE_FILTER_IDS.some(id => document.getElementById(id).value));
+    applyFilters(true);
 });
 
 function updatePaginationUI() {
+  document.getElementById("filterResultCount").textContent =
+    `${totalCount} transaction${totalCount === 1 ? "" : "s"}`;
   const start = currentOffset + 1;
   const end = currentOffset + lastRowCount;
   document.getElementById("pageInfo").textContent = lastRowCount === 0

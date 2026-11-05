@@ -120,7 +120,7 @@ Yearly and monthly views of income, spending, investing and your savings rate, i
 - **Expenses**: everything else, **netted per category**. Money coming back (a refund, or someone paying you back) lowers that category instead of counting as income. For a bill you share: split it so the other person's half goes to *Transfers*, and tag their repayment *Transfers* too; the two cancel out.
 - **Ignored**: the *Internal* category (moving money between your own accounts, currency exchanges) isn't counted at all.
 - Split transactions count as their parts. Each category always has the same color.
-- **Savings rate** counts money you invested as saved (income minus expenses).
+- **Saved** is income minus expenses, so money you invested counts as saved. The Savings Trend chart shows amounts by default; switch it to % for the savings rate.
 - **Projected savings rate**: from 6 complete months on, the Dashboard estimates where the year is heading: your actual months, then income like the same months last year and spending at this year's monthly average. It's an estimate, not a forecast.
 
 ### Net Worth

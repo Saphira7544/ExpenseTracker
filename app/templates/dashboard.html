@@ -25,11 +25,17 @@
     </div>
 
     <div class="card chart-card">
-        <h2><i class="fa-solid fa-piggy-bank"></i> Savings Rate Trend</h2>
+        <div class="chart-head">
+            <h2><i class="fa-solid fa-piggy-bank"></i> Savings Trend</h2>
+            <div class="chart-toggle" role="group" aria-label="Show savings as">
+                <button type="button" data-savings-view="amount" aria-pressed="true">Amount</button>
+                <button type="button" data-savings-view="percent" aria-pressed="false">%</button>
+            </div>
+        </div>
         <canvas id="overviewSavingsRateChart"></canvas>
         <p class="small-muted projection-note" id="projection-note" hidden></p>
         <p class="small-muted projection-note">
-            <strong>Savings rate</strong> is income minus expenses, so money you invested already counts as saved.
+            <strong>Saved</strong> is income minus expenses, so money you invested already counts as saved.
         </p>
     </div>
 

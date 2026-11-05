@@ -120,11 +120,26 @@ function renderProjectionNote(projection) {
     const p = projection;
     const beforeTrips = OCCASIONAL ? ` (${p.savings_rate_regular.toFixed(1)}% before ${esc(OCCASIONAL.label.toLowerCase())})` : '';
     const income = p.income_from_last_year ? "last year's income" : "last year's income where known";
-    el.innerHTML = `<strong>Projected for ${esc(p.year)}: ${p.savings_rate.toFixed(1)}%${beforeTrips}, saving ${esc(fmtMoney(p.net))}.</strong>
+    el.innerHTML = `<strong>Projected for ${esc(p.year)}: saving ${esc(fmtMoney(p.net))}, ${p.savings_rate.toFixed(1)}% of income${beforeTrips}.</strong>
         Estimate: the months left use ${income} and this year's average spending.`;
 }
 
+// Amounts by default: a percentage says little for a year with hardly any income
+// (a year of moving abroad can be -90% and dwarf everything else on the chart).
+let savingsView = 'amount';
+let savingsChartArgs = null;
+try {
+    if (localStorage.getItem('savingsView') === 'percent') savingsView = 'percent';
+} catch (e) { /* no storage: keep the default */ }
+
 function renderOverviewSavingsRateChart(trend, projection, selectedYear) {
+    savingsChartArgs = [trend, projection, selectedYear];
+    const asAmount = savingsView === 'amount';
+    document.querySelectorAll('[data-savings-view]').forEach(btn => {
+        btn.setAttribute('aria-pressed', btn.dataset.savingsView === savingsView);
+    });
+    const mainKey = asAmount ? 'net' : 'savings_rate';
+    const beforeKey = asAmount ? 'net_regular' : 'savings_rate_regular';
     destroyChart('overviewSavingsRate');
     const ctx = document.getElementById('overviewSavingsRateChart');
     // All Time has one point per year: this year's point is the year so far, and the
@@ -153,9 +168,10 @@ function renderOverviewSavingsRateChart(trend, projection, selectedYear) {
     };
     const points = pick => rows.map((r, i) => (extendLine ? { x: xPosition(i), y: pick(r) } : pick(r)));
     const datasets = [{
-        label: 'Savings rate',
+        label: 'Saved',
         savedKey: 'net',
-        data: points(r => r.savings_rate),
+        rateKey: 'savings_rate',
+        data: points(r => r[mainKey]),
         segment: extendLine ? {
             borderDash: c => (c.p1DataIndex === last ? [6, 4] : undefined),
             backgroundColor: c => (c.p1DataIndex === last ? 'transparent' : undefined),
@@ -175,7 +191,8 @@ function renderOverviewSavingsRateChart(trend, projection, selectedYear) {
         datasets.push({
             label: `Before ${OCCASIONAL.label.toLowerCase()}`,
             savedKey: 'net_regular',
-            data: points(r => r.savings_rate_regular),
+            rateKey: 'savings_rate_regular',
+            data: points(r => r[beforeKey]),
             borderColor: OCCASIONAL.color,
             backgroundColor: OCCASIONAL.color,
             borderDash: [6, 4],
@@ -187,8 +204,9 @@ function renderOverviewSavingsRateChart(trend, projection, selectedYear) {
     }
     if (projection && !extendLine) {
         datasets.push({
-            label: `Projected for ${projection.year}`,
-            data: trend.map(() => projection.savings_rate),
+            // Months next to a yearly total wouldn't compare, so in amounts it's that year's monthly average.
+            label: asAmount ? `Projected ${projection.year}, per month` : `Projected for ${projection.year}`,
+            data: trend.map(() => (asAmount ? projection.net / 12 : projection.savings_rate)),
             isProjection: true,
             borderColor: '#0f172a',
             borderDash: [3, 4],
@@ -211,10 +229,10 @@ function renderOverviewSavingsRateChart(trend, projection, selectedYear) {
                     callbacks: {
                         label: c => {
                             if (c.dataset.isProjection) {
-                                return `${c.dataset.label}: ${c.parsed.y.toFixed(1)}% · saved ${fmtMoney(projection.net)}`;
+                                return `${c.dataset.label}: ${asAmount ? fmtMoney(c.parsed.y) : `${c.parsed.y.toFixed(1)}%`}`;
                             }
-                            const amount = rows[c.dataIndex][c.dataset.savedKey];
-                            return `${c.dataset.label}: ${c.parsed.y.toFixed(1)}% · saved ${fmtMoney(amount)}`;
+                            const r = rows[c.dataIndex];
+                            return `${c.dataset.label}: ${fmtMoney(r[c.dataset.savedKey])} · ${r[c.dataset.rateKey].toFixed(1)}% of income`;
                         },
                         title: items => labels[items[0].dataIndex],
                         footer: items => {
@@ -236,19 +254,29 @@ function renderOverviewSavingsRateChart(trend, projection, selectedYear) {
                         ticks: { callback: v => String(v) },
                     },
                 } : {}),
-                // Start at 0 so the line's height is proportional to the rate
+                // Start at 0 so the line's height is proportional to the value
                 // (a 30% vs 42% month shouldn't look like a collapse). Negative
-                // months still extend below 0.
+                // values still extend below 0.
                 y: {
                     beginAtZero: true,
-                    suggestedMax: 50,
-                    ticks: { callback: v => `${v}%` },
+                    suggestedMax: asAmount ? undefined : 50,
+                    ticks: { callback: v => (asAmount ? (Math.abs(v) >= 1000 ? `${v / 1000}k` : String(v)) : `${v}%`) },
                     grid: { color: c => c.tick.value === 0 ? '#94a3b8' : 'rgba(148,163,184,0.2)' },
                 },
             },
         },
     }));
 }
+
+document.querySelector('.chart-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-savings-view]');
+    if (!btn || btn.dataset.savingsView === savingsView) return;
+    savingsView = btn.dataset.savingsView;
+    try {
+        localStorage.setItem('savingsView', savingsView);
+    } catch (err) { /* it just won't be remembered */ }
+    if (savingsChartArgs) renderOverviewSavingsRateChart(...savingsChartArgs);
+});
 
 // ---------- Occasional spending (trips) on its own ----------
 

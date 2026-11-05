@@ -204,3 +204,21 @@ table.heatmap .hm-net-back .hm-name { color: #94a3b8; }
 .projection-note { margin: 10px 0 0; line-height: 1.45; }
 .projection-note[hidden] { display: none; }
 .projection-note strong { color: #334155; }
+
+/* Savings chart: title with the amount / % switch */
+.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.chart-head h2 { margin: 0; }
+.chart-toggle { display: flex; flex: none; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+.chart-toggle button {
+    padding: 4px 12px;
+    border: none;
+    background: #fff;
+    color: #475569;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.chart-toggle button + button { border-left: 1px solid #d1d5db; }
+.chart-toggle button:hover { background: #f1f5f9; }
+.chart-toggle button[aria-pressed="true"] { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+.chart-toggle button:focus-visible { outline: 2px solid #4f8ef7; outline-offset: -2px; }

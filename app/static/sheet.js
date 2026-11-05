@@ -40,7 +40,8 @@ function fmtDate(iso, opts = { day: 'numeric', month: 'short' }) {
 }
 
 function transactionsLink(line) {
-    const p = new URLSearchParams({ search: line.description || '', date_from: line.date, date_to: line.date });
+    const day = line.paid_on || line.date;   // Transactions filters by the real date
+    const p = new URLSearchParams({ search: line.description || '', date_from: day, date_to: day });
     return `/transactions?${p}`;
 }
 
@@ -72,7 +73,7 @@ function lineRow(l) {
         ? `<span class="alt">${esc(fmt(l.amount, l.currency))}</span>` : '';
     return `<li class="${l.value < 0 ? 'money-back-line' : ''}">
         <span class="line-date">${esc(fmtDate(l.date))}</span>
-        <a class="line-desc" href="${transactionsLink(l)}" title="${esc(l.description)}${l.note ? ' · ' + esc(l.note) : ''}">${esc(l.description)}</a>
+        <a class="line-desc" href="${transactionsLink(l)}" title="${esc(l.description)}${l.note ? ' · ' + esc(l.note) : ''}${l.paid_on && l.paid_on !== l.date ? ' · paid ' + esc(fmtDate(l.paid_on, { day: 'numeric', month: 'short', year: 'numeric' })) : ''}">${esc(l.description)}</a>
         <span class="line-amount"><span class="main">${fmt(l.value)}</span>${original}</span>
     </li>`;
 }

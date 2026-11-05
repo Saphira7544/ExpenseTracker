@@ -105,6 +105,7 @@ Search and filter everything you've imported.
 - **Category picker** in each row for quick changes; select several rows to change their category or **delete** them in one go.
 - **Scissors**: split a transaction across categories (e.g. a shared grocery bill). The dialog says which sign to use, because it depends on whether the money went out or came in. Undo it with the arrow icon.
 - A category you set by hand is marked *manual* and rules won't change it; the wand icon hands it back to the rules.
+- **Counts in month** (when editing a transaction, and on each part of a split): the dashboards count it in that month instead, while it keeps its real date and exchange rate. Use it for January's salary paid in December, a bill paid a day late, or rent paid back months later.
 - **Categorize N uncategorized with AI** (top of the page, when there are any) runs your rules and then the AI on transactions with no category, e.g. if the AI couldn't run when you uploaded them. It never touches ones that already have a category.
 
 ### Rules
@@ -119,6 +120,8 @@ Yearly and monthly views of income, spending, investing and your savings rate, i
 - **Expenses**: everything else, **netted per category**. Money coming back (a refund, or someone paying you back) lowers that category instead of counting as income. For a bill you share: split it so the other person's half goes to *Transfers*, and tag their repayment *Transfers* too; the two cancel out.
 - **Ignored**: the *Internal* category (moving money between your own accounts, currency exchanges) isn't counted at all.
 - Split transactions count as their parts. Each category always has the same color.
+- **Savings rate** counts money you invested as saved (income minus expenses).
+- **Projected savings rate**: from 6 complete months on, the Dashboard estimates where the year is heading: your actual months, then income like the same months last year and spending at this year's monthly average. It's an estimate, not a forecast.
 
 ### Net Worth
 Your accounts, grouped by bank, with their latest value. Record a new value with the trend-arrow icon (for ETFs/stocks, enter quantity and price; *Use ECB rate* fills in the exchange rate). **Record snapshot** saves today's total as a point on your net-worth trend. *Net Worth Config* holds the lists you pick from (banks, asset categories, currencies…), and *Net Worth Analytics* shows the trend and how your money is allocated.

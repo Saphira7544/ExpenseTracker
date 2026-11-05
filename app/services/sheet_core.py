@@ -33,6 +33,7 @@ def _line(r, sign: int) -> dict:
     return {
         "transaction_id": r.transaction_id,
         "date": r.date.date().isoformat(),
+        "paid_on": r.paid_on.date().isoformat(),
         "description": r.description,
         "category": r.category,
         "value": _r(sign * r.value),

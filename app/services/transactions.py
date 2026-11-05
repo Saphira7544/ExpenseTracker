@@ -99,9 +99,9 @@ def create_transaction(user_id: int, fields: dict) -> str:
             text("""
                 INSERT INTO transactions
                 (transactionId, date, transactionType, description, amount, currency, account,
-                 sourceFile, category, is_manual_category, user_id)
+                 sourceFile, category, is_manual_category, counts_in, user_id)
                 VALUES (:id, :date, :type, :description, :amount, :currency, :account,
-                        :source, :category, :is_manual, :user_id)
+                        :source, :category, :is_manual, :counts_in, :user_id)
             """),
             {
                 "id": transaction_id,
@@ -115,6 +115,7 @@ def create_transaction(user_id: int, fields: dict) -> str:
                 "category": fields.get("category"),
                 # A category picked by hand must survive rule re-runs.
                 "is_manual": fields.get("category") is not None,
+                "counts_in": fields.get("counts_in"),
                 "user_id": user_id,
             }
         )
@@ -139,13 +140,15 @@ def update_transaction(user_id: int, existing: dict, fields: dict) -> None:
                 SET date = :date, transactionType = :type, description = :description,
                     amount = :amount, currency = :currency, account = :account,
                     category = :category,
-                    is_manual_category = :is_manual
+                    is_manual_category = :is_manual,
+                    counts_in = :counts_in
                 WHERE transactionId = :id AND user_id = :user_id
             """),
             {
                 "id": existing["transactionid"],
                 "user_id": user_id,
                 "date": fields["date"],
+                "counts_in": fields.get("counts_in"),
                 "type": _transaction_type(fields["amount"]),
                 "description": fields["description"],
                 "amount": fields["amount"],
@@ -214,14 +217,15 @@ def save_splits(user_id: int, transaction_id: str, splits: list[dict], remainder
         for s in splits:
             conn.execute(
                 text("""
-                    INSERT INTO transaction_splits (transactionId, category, amount, note, user_id)
-                    VALUES (:id, :category, :amount, :note, :user_id)
+                    INSERT INTO transaction_splits (transactionId, category, amount, note, counts_in, user_id)
+                    VALUES (:id, :category, :amount, :note, :counts_in, :user_id)
                 """),
                 {
                     "id": transaction_id, 
                     "category": s["category"], 
                     "amount": s["amount"], 
                     "note": s.get("note"), 
+                    "counts_in": s.get("counts_in"),
                     "user_id": user_id
                 }
             )

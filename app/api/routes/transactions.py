@@ -26,6 +26,15 @@ def require_known_categories(user_id: int, *values: str | None) -> None:
         raise HTTPException(status_code=422, detail=f"Unknown category: {', '.join(unknown)}")
 
 
+def _month_or_none(value: Optional[str]) -> Optional[str]:
+    """'YYYY-MM': the month the dashboards count something in. Blank = its real date's month."""
+    if value in (None, ""):
+        return None
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", value):
+        raise ValueError("must be a month like 2026-01")
+    return value
+
+
 class BulkCategoryUpdate(BaseModel):
     transaction_ids: list[str]
     category: str
@@ -57,6 +66,8 @@ class TransactionPayload(BaseModel):
     currency: str
     account: str
     category: Optional[str] = None  # None = uncategorized
+    counts_in: Optional[str] = None
+    _check_counts_in = field_validator("counts_in")(_month_or_none)
 
     @field_validator("description", "account")
     @classmethod
@@ -173,6 +184,8 @@ class SplitItem(BaseModel):
     category: str
     amount: float
     note: Optional[str] = None
+    counts_in: Optional[str] = None
+    _check_counts_in = field_validator("counts_in")(_month_or_none)
 
 class SplitRequest(BaseModel):
     splits: list[SplitItem]

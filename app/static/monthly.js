@@ -460,7 +460,8 @@ function renderHistoryChart() {
 // ---------- transactions list ----------
 
 function transactionsLink(line) {
-    const p = new URLSearchParams({ search: line.description || '', date_from: line.date, date_to: line.date });
+    const day = line.paid_on || line.date;   // Transactions filters by the real date
+    const p = new URLSearchParams({ search: line.description || '', date_from: day, date_to: day });
     return `/transactions?${p}`;
 }
 
@@ -489,6 +490,7 @@ function renderLines() {
             <td>
                 <div class="line-desc" title="${esc(l.description)}">${esc(l.description || '—')}</div>
                 ${l.note ? `<div class="line-note" title="${esc(l.note)}"><i class="fa-solid fa-scissors"></i> ${esc(l.note)}</div>` : ''}
+                ${l.paid_on && l.paid_on.slice(0, 7) !== l.date.slice(0, 7) ? `<div class="line-note"><i class="fa-regular fa-calendar"></i> Paid ${esc(parseDay(l.paid_on).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }))}</div>` : ''}
             </td>
             <td><button type="button" class="link-btn cat-btn" data-category="${esc(l.category)}"
                 title="Focus on ${esc(l.category)}">${categoryBadge(l.category)}</button></td>

@@ -199,3 +199,8 @@ table.heatmap .hm-net-back .hm-name { color: #94a3b8; }
 .occ-lines a { color: #334155; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .occ-lines a:hover { color: #2563eb; text-decoration: underline; }
 .occ-amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Where a year in progress is heading, under the savings rate chart. */
+.projection-note { margin: 10px 0 0; line-height: 1.45; }
+.projection-note[hidden] { display: none; }
+.projection-note strong { color: #334155; }

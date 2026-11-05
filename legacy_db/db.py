@@ -54,6 +54,8 @@ def create_db():
             )
         """))
         conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category_before_split TEXT"))
+        # 'YYYY-MM': the month the dashboards count it in, when not the month of its real date.
+        conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS counts_in TEXT"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON transactions (user_id, date)"))
         _migrate_transactions_key(conn)
         conn.commit()
@@ -71,6 +73,8 @@ def create_splits_table():
                 user_id INTEGER REFERENCES users(id)
             )
         """))
+        # 'YYYY-MM': this part alone counts in another month.
+        conn.execute(text("ALTER TABLE transaction_splits ADD COLUMN IF NOT EXISTS counts_in TEXT"))
         conn.execute(text("""
             DO $$
             BEGIN

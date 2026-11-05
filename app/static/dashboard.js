@@ -112,26 +112,70 @@ function renderOverviewIncomeExpensesChart(trend) {
     }));
 }
 
-function renderOverviewSavingsRateChart(trend) {
+// The line shows what happened; for a year still in progress, this says where it's heading.
+function renderProjectionNote(projection) {
+    const el = document.getElementById('projection-note');
+    el.hidden = !projection;
+    if (!projection) return;
+    const p = projection;
+    const beforeTrips = OCCASIONAL ? ` (${p.savings_rate_regular.toFixed(1)}% before ${esc(OCCASIONAL.label.toLowerCase())})` : '';
+    const income = p.income_from_last_year ? "last year's income" : "last year's income where known";
+    el.innerHTML = `<strong>Projected for ${esc(p.year)}: ${p.savings_rate.toFixed(1)}%${beforeTrips}, saving ${esc(fmtMoney(p.net))}.</strong>
+        Estimate: the months left use ${income} and this year's average spending.`;
+}
+
+function renderOverviewSavingsRateChart(trend, projection, selectedYear) {
     destroyChart('overviewSavingsRate');
     const ctx = document.getElementById('overviewSavingsRateChart');
+    // All Time has one point per year: this year's point is the year so far, and the
+    // projection continues the line to a point of its own. A year's months can't
+    // continue into a yearly rate, so there it's a level line across the chart.
+    const extendLine = !!projection && selectedYear === 'all';
+    const rows = extendLine ? [...trend, projection] : trend;
+    const last = rows.length - 1;
+    const labels = trend.map(r => formatPeriodLabel(r.period));
+    if (extendLine) {
+        labels[labels.length - 1] = `${projection.year} so far`;
+        labels.push(`${projection.year} projected`);
+    }
+    const isProjected = i => extendLine && i === last;
+    // Positions in time when projecting: a year's tick is that year's end, so the
+    // year so far sits as close to its end as today really is.
+    const projectedYear = extendLine ? Number(projection.year) : null;
+    const xPosition = i => {
+        if (isProjected(i)) return projectedYear;
+        if (i === last - 1) {
+            const start = new Date(projectedYear, 0, 1);
+            const end = new Date(projectedYear + 1, 0, 1);
+            return projectedYear - 1 + (Date.now() - start) / (end - start);
+        }
+        return Number(rows[i].period);
+    };
+    const points = pick => rows.map((r, i) => (extendLine ? { x: xPosition(i), y: pick(r) } : pick(r)));
     const datasets = [{
         label: 'Savings rate',
-        data: trend.map(r => r.savings_rate),
+        savedKey: 'net',
+        data: points(r => r.savings_rate),
+        segment: extendLine ? {
+            borderDash: c => (c.p1DataIndex === last ? [6, 4] : undefined),
+            backgroundColor: c => (c.p1DataIndex === last ? 'transparent' : undefined),
+        } : undefined,
         // Neutral slate: a rate, not a category (violet means Investments elsewhere).
         borderColor: '#475569',
         backgroundColor: 'rgba(71,85,105,0.12)',
         fill: 'origin',
         cubicInterpolationMode: 'monotone',  // smooth, but never overshoots the data
         borderWidth: 2,
-        pointBackgroundColor: '#475569',
+        pointBackgroundColor: rows.map((_, i) => (isProjected(i) ? '#fff' : '#475569')),
+        pointBorderColor: '#475569',
         pointRadius: 4,
     }];
     if (OCCASIONAL) {
         // What a normal month would have saved: the gap to the solid line is what trips cost.
         datasets.push({
             label: `Before ${OCCASIONAL.label.toLowerCase()}`,
-            data: trend.map(r => r.savings_rate_regular),
+            savedKey: 'net_regular',
+            data: points(r => r.savings_rate_regular),
             borderColor: OCCASIONAL.color,
             backgroundColor: OCCASIONAL.color,
             borderDash: [6, 4],
@@ -141,27 +185,57 @@ function renderOverviewSavingsRateChart(trend) {
             pointRadius: 3,
         });
     }
+    if (projection && !extendLine) {
+        datasets.push({
+            label: `Projected for ${projection.year}`,
+            data: trend.map(() => projection.savings_rate),
+            isProjection: true,
+            borderColor: '#0f172a',
+            borderDash: [3, 4],
+            borderWidth: 1.5,
+            fill: false,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+        });
+    }
     registerChart('overviewSavingsRate', new Chart(ctx, {
         type: 'line',
-        data: { labels: trend.map(r => formatPeriodLabel(r.period)), datasets },
+        data: { labels, datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { display: !!OCCASIONAL, position: 'bottom' },
+                legend: { display: datasets.length > 1, position: 'bottom' },
                 tooltip: {
                     callbacks: {
                         label: c => {
-                            const r = trend[c.dataIndex];
-                            const saved = c.datasetIndex === 0 ? r.net : r.net_regular;
-                            return `${c.dataset.label}: ${c.parsed.y.toFixed(1)}% · saved ${fmtMoney(saved)}`;
+                            if (c.dataset.isProjection) {
+                                return `${c.dataset.label}: ${c.parsed.y.toFixed(1)}% · saved ${fmtMoney(projection.net)}`;
+                            }
+                            const amount = rows[c.dataIndex][c.dataset.savedKey];
+                            return `${c.dataset.label}: ${c.parsed.y.toFixed(1)}% · saved ${fmtMoney(amount)}`;
                         },
-                        footer: items => `Income: ${fmtMoney(trend[items[0].dataIndex].income)}`,
+                        title: items => labels[items[0].dataIndex],
+                        footer: items => {
+                            const i = items[0].dataIndex;
+                            return `${isProjected(i) ? 'Estimated income' : 'Income'}: ${fmtMoney(rows[i].income)}`;
+                        },
                     },
                 },
             },
             scales: {
+                ...(extendLine ? {
+                    x: {
+                        type: 'linear',
+                        min: Number(rows[0].period) - 0.2,
+                        max: projectedYear + 0.2,
+                        afterBuildTicks: axis => {
+                            axis.ticks = rows.filter((_, i) => i !== last - 1).map((_, i) => ({ value: Number(rows[0].period) + i }));
+                        },
+                        ticks: { callback: v => String(v) },
+                    },
+                } : {}),
                 // Start at 0 so the line's height is proportional to the rate
                 // (a 30% vs 42% month shouldn't look like a collapse). Negative
                 // months still extend below 0.
@@ -247,8 +321,8 @@ function renderOccasionalSection(data) {
 
     const lines = data.occasional_lines;
     document.getElementById('occasional-lines').innerHTML = lines.length ? lines.map(l => {
-        const p = new URLSearchParams({ search: l.description || '', date_from: l.date, date_to: l.date });
-        const day = new Date(`${l.date}T00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+        const p = new URLSearchParams({ search: l.description || '', date_from: l.paid_on, date_to: l.paid_on });
+        const day = new Date(`${l.paid_on}T00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
         return `<li><span class="occ-date">${esc(day)}</span>
             <a href="/transactions?${p}" title="${esc(l.description)}">${esc(l.description)}</a>
             <span class="occ-amount">${fmtMoney(l.spent)}</span></li>`;
@@ -355,7 +429,8 @@ async function loadOverview(year) {
     setupOccasional(data);
     renderOverviewSummaryCards(data.summary, data.monthly_average);
     renderOverviewIncomeExpensesChart(data.income_expenses_trend);
-    renderOverviewSavingsRateChart(data.savings_rate_trend);
+    renderOverviewSavingsRateChart(data.savings_rate_trend, data.year_end_projection, data.selected_year);
+    renderProjectionNote(data.year_end_projection);
     renderOccasionalSection(data);
     renderCategoryHeatmap(data.category_heatmap);
 }

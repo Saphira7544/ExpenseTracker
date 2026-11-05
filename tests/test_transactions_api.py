@@ -113,3 +113,33 @@ def test_bulk_delete(api, monkeypatch):
     assert r.status_code == 200 and r.json() == {"deleted": 2}
     assert seen == {"uid": 7, "ids": ["a", "b"]}
     assert client.post("/api/transactions/bulk-delete", json={}).status_code == 422
+
+
+def test_counts_in_is_saved_with_the_transaction(api):
+    client, calls = api
+    assert client.post("/api/transactions", json={**VALID, "counts_in": "2026-01"}).status_code == 200
+    assert calls["create"][1]["counts_in"] == "2026-01"
+
+
+def test_a_blank_counts_in_means_the_month_of_the_date(api):
+    client, calls = api
+    client.post("/api/transactions", json={**VALID, "counts_in": ""})
+    assert calls["create"][1]["counts_in"] is None
+
+
+@pytest.mark.parametrize("month", ["2026-13", "2026-1", "January", "2026-01-05"])
+def test_counts_in_must_be_a_month(api, month):
+    client, calls = api
+    assert client.post("/api/transactions", json={**VALID, "counts_in": month}).status_code == 422
+    assert "create" not in calls
+
+
+def test_split_parts_can_each_have_their_own_month(api, monkeypatch):
+    client, calls = api
+    monkeypatch.setattr(routes, "save_splits", lambda uid, tid, splits, remainder: calls.setdefault("split", splits))
+    r = client.post("/api/transactions/imported-1/split", json={"splits": [
+        {"category": "Rents", "amount": 60, "counts_in": "2026-02"},
+        {"category": "Groceries", "amount": 40},
+    ]})
+    assert r.status_code == 200
+    assert [s["counts_in"] for s in calls["split"]] == ["2026-02", None]

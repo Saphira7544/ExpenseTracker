@@ -25,7 +25,7 @@ def get_sheet_bundle(user_id: int, month: str | None = None, currency: str | Non
     meta["alt_currency"] = alt
 
     tx_months = tx["date"].dt.strftime("%Y-%m")
-    available_months = sorted(set(tx_months), reverse=True)
+    available_months = sorted(set(tx_months) | set(sheet_core.periods(lines, "%Y-%m")), reverse=True)
     selected_month = month if month in available_months else (available_months[0] if available_months else None)
     if not selected_month:
         return {"available_months": [], "selected_month": None, "sheet": None, "rate": None, **meta}
@@ -34,8 +34,8 @@ def get_sheet_bundle(user_id: int, month: str | None = None, currency: str | Non
         lines["alt_value"] = pd.Series(dtype=float)
     else:
         currencies = set(lines["currency"]) | {alt}
-        fx.ensure_rates(currencies, lines["date"].min().date())
-        lines["alt_value"], missing = fx.convert(lines, alt, fx.load_rates(currencies))
+        fx.ensure_rates(currencies, lines["paid_on"].min().date())
+        lines["alt_value"], missing = fx.convert(lines.assign(date=lines["paid_on"]), alt, fx.load_rates(currencies))
         lines = lines.dropna(subset=["alt_value"])
         meta["fx_missing"] = sorted(set(meta["fx_missing"]) | set(missing))
 

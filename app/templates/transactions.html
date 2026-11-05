@@ -146,6 +146,10 @@
         <label class="span-2">Category
           <select id="txCategory"></select>
         </label>
+        <label class="span-all">Counts in month <span class="small-muted">(optional)</span>
+          <input type="month" id="txCountsIn" aria-describedby="txCountsInHelp">
+          <span class="small-muted" id="txCountsInHelp">Keeps its real date, but the dashboards count it in this month. E.g. January's salary, paid in December. Leave empty to use the month of the date.</span>
+        </label>
       </div>
       <datalist id="accountOptions"></datalist>
 
@@ -169,9 +173,10 @@
     </div>
     <p class="dialog-note" id="splitDescription"></p>
     <p class="split-totals">Total <strong id="splitTotal"></strong> · allocated <strong id="splitAllocated">0.00</strong> · left <strong id="splitLeft"></strong></p>
-    <div class="split-guide" id="splitGuide"></div>
+    <div class="split-sign-help" id="splitGuide"></div>
     <div id="splitRows"></div>
     <button class="secondary" id="addSplitRow"><i class="fa-solid fa-plus"></i> Add part</button>
+    <p class="small-muted split-month-help">The month on a part is optional: it makes the dashboards count that part in another month, e.g. rent paid back late.</p>
     <label class="split-remainder">Whatever is left goes to
       <select id="remainderCategory"></select>
     </label>
@@ -205,6 +210,13 @@ let filterData = { accounts: [], categories: [], currencies: [] };
 
 function options(values, selected) {
   return values.map(v => `<option value="${esc(v)}" ${v === selected ? "selected" : ""}>${esc(v)}</option>`).join("");
+}
+
+function countsInTag(month) {
+  if (!month) return "";
+  const [y, m] = month.split("-").map(Number);
+  const name = new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  return `<div class="counts-in-tag"><i class="fa-regular fa-calendar" aria-hidden="true"></i> counts in ${esc(name)}</div>`;
 }
 
 function formatDate(iso) {
@@ -273,7 +285,7 @@ function rowHtml(tx) {
     <td class="col-edit">
       <button class="icon-btn small edit-btn" data-id="${id}" title="Edit transaction"><i class="fa-solid fa-pen"></i></button>
     </td>
-    <td class="col-date">${esc(formatDate(tx.date))}</td>
+    <td class="col-date">${esc(formatDate(tx.date))}${countsInTag(tx.counts_in)}</td>
     <td>
       <div class="tx-desc" title="${esc(tx.description)}">${esc(tx.description)}${isManualEntry ? '<span class="tx-pill">Manual</span>' : ''}</div>
     </td>
@@ -483,6 +495,8 @@ function openTxDialog(tx = null) {
       `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   }
 
+  document.getElementById("txCountsIn").value = tx?.counts_in || "";
+
   // A split's parts must keep adding up, so amount/direction/category are locked.
   form.querySelectorAll('input[name="txDirection"]').forEach(r => r.disabled = isSplit);
   document.getElementById("txAmount").disabled = isSplit;
@@ -533,6 +547,7 @@ function readTxForm() {
       description: fields.description.value.trim(),
       account: fields.account.value.trim(),
       category: document.getElementById("txCategory").value || null,
+      counts_in: document.getElementById("txCountsIn").value || null,
     },
   };
 }
@@ -612,6 +627,8 @@ function addSplitRow(part = null) {
     <select class="split-category" aria-label="Category">${options(CATEGORIES, part?.category)}</select>
     <input type="number" class="split-amount" placeholder="Amount" step="0.01" aria-label="Amount"
            value="${part ? Number(part.amount).toFixed(2) : ""}">
+    <input type="month" class="split-month" aria-label="Counts in month (optional)"
+           title="Counts in this month (optional)" value="${esc(part?.counts_in || "")}">
     <input type="text" class="split-note" placeholder="Note (optional)" aria-label="Note" value="${esc(part?.note || "")}">
     <button type="button" class="icon-btn small danger remove-part" title="Remove this part"><i class="fa-solid fa-xmark"></i></button>
   `;
@@ -650,6 +667,7 @@ function splitGuide(amount) {
     <p>Settling up? <em>Left</em> should end at 0.00.</p>`;
 }
 
+// existingParts: the current split when editing (null for a new split).
 function openSplitDialog(tx, existingParts = null) {
   document.getElementById("splitGuide").innerHTML = splitGuide(parseFloat(tx.amount));
   currentSplitId = tx.transactionid;
@@ -705,7 +723,8 @@ function splitPartRows(tx, parts) {
   const sign = tx.amount < 0 ? -1 : 1;
   return parts.map((p, i) => {
     const amount = sign * Number(p.amount);   // negative parts go the other way
-    const note = p.note === REMAINDER_NOTE ? '<span class="small-muted">what was left</span>' : esc(p.note || "");
+    const note = (p.note === REMAINDER_NOTE ? '<span class="small-muted">what was left</span>' : esc(p.note || ""))
+      + countsInTag(p.counts_in);
     return `
       <tr class="split-detail${i === parts.length - 1 ? " last" : ""}">
         <td colspan="3"></td>
@@ -756,6 +775,7 @@ document.getElementById("saveSplitBtn").onclick = async () => {
     category: r.querySelector(".split-category").value,
     amount: Math.round(parseFloat(r.querySelector(".split-amount").value || 0) * 100) / 100,
     note: r.querySelector(".split-note").value.trim() || null,
+    counts_in: r.querySelector(".split-month").value || null,
   })).filter(s => s.amount !== 0);
 
   const sum = splits.reduce((a, s) => a + s.amount, 0);

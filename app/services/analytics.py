@@ -16,20 +16,20 @@ from app.services.settings import get_settings, SUPPORTED_DISPLAY_CURRENCIES
 def _load_frames(user_id: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     with engine.connect() as conn:
         tx_rows = conn.execute(text("""
-            SELECT transactionId AS transaction_id, date, description, category, amount, currency
+            SELECT transactionId AS transaction_id, date, description, category, amount, currency, counts_in
             FROM transactions
             WHERE user_id = :user_id
         """), {"user_id": user_id}).mappings().all()
         split_rows = conn.execute(text("""
-            SELECT transactionId AS transaction_id, category, amount, note
+            SELECT transactionId AS transaction_id, category, amount, note, counts_in
             FROM transaction_splits
             WHERE user_id = :user_id
         """), {"user_id": user_id}).mappings().all()
 
-    tx = pd.DataFrame([dict(r) for r in tx_rows], columns=core.TX_COLUMNS)
+    tx = pd.DataFrame([dict(r) for r in tx_rows], columns=core.TX_COLUMNS + ["counts_in"])
     tx["date"] = pd.to_datetime(tx["date"])
     tx["currency"] = tx["currency"].astype(str).str.strip().str.upper()
-    splits = pd.DataFrame([dict(r) for r in split_rows], columns=core.SPLIT_COLUMNS + ["note"])
+    splits = pd.DataFrame([dict(r) for r in split_rows], columns=core.SPLIT_COLUMNS + ["note", "counts_in"])
     return tx, splits
 
 
@@ -47,8 +47,8 @@ def _prepare(user_id: int, currency: str | None) -> tuple[pd.DataFrame, pd.DataF
         lines["value"] = pd.Series(dtype=float)
     else:
         currencies = set(lines["currency"]) | {target}
-        fx.ensure_rates(currencies, lines["date"].min().date())
-        lines["value"], missing = fx.convert(lines, target, fx.load_rates(currencies))
+        fx.ensure_rates(currencies, lines["paid_on"].min().date())
+        lines["value"], missing = fx.convert(lines.assign(date=lines["paid_on"]), target, fx.load_rates(currencies))
         lines = lines.dropna(subset=["value"])
 
     lines = core.classify(lines, settings["income_categories"], settings["investment_categories"],
@@ -74,7 +74,7 @@ def get_overview_bundle(user_id: int, year: str | None = None, currency: str | N
     - year == 'YYYY'         -> one point PER MONTH within that year
     """
     lines, tx, meta = _prepare(user_id, currency)
-    available_years = sorted(set(tx["date"].dt.strftime("%Y")), reverse=True)
+    available_years = sorted(set(tx["date"].dt.strftime("%Y")) | set(core.periods(lines, "%Y")), reverse=True)
     selected_year = year or "all"
 
     if selected_year == "all":
@@ -83,11 +83,15 @@ def get_overview_bundle(user_id: int, year: str | None = None, currency: str | N
         scoped, fmt = lines[core.periods(lines, "%Y") == selected_year], "%Y-%m"
 
     trend = core.trend(scoped, fmt)
+    today = date.today()
     return {
         "available_years": available_years,
         "selected_year": selected_year,
         "summary": core.totals(scoped),
-        "monthly_average": core.monthly_average(scoped, date.today().strftime("%Y-%m")),
+        "monthly_average": core.monthly_average(scoped, today.strftime("%Y-%m")),
+        # Only where this year is on screen. Needs every line: it looks at last year too.
+        "year_end_projection": (core.year_end_projection(lines, today.strftime("%Y-%m"))
+                                if selected_year in ("all", str(today.year)) else None),
         "occasional_lines": core.occasional_lines(scoped),
         "income_expenses_trend": trend,
         "savings_rate_trend": core.savings_rate_trend(trend),
@@ -103,7 +107,7 @@ def get_overview_bundle(user_id: int, year: str | None = None, currency: str | N
 def get_monthly_bundle(user_id: int, month: str | None = None, currency: str | None = None) -> dict:
     lines, tx, meta = _prepare(user_id, currency)
     tx_months = tx["date"].dt.strftime("%Y-%m")
-    available_months = sorted(set(tx_months), reverse=True)
+    available_months = sorted(set(tx_months) | set(core.periods(lines, "%Y-%m")), reverse=True)
     selected_month = month or (available_months[0] if available_months else None)
 
     if not selected_month:

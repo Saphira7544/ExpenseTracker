@@ -12,6 +12,10 @@ currency, plus (after conversion) `value` in the display currency and a
                  earned, spent nor invested)
 - spending    -> everything else
 
+A line's `date` is the day it counts on: its real date (`paid_on`), moved to
+another month if the transaction or split part has `counts_in` ('YYYY-MM').
+Currency conversion always uses `paid_on`, the day the money really moved.
+
 Spending lines in an *occasional* category (default: Travel) also get
 `occasional` = True: sporadic spending that isn't part of a normal month. It
 still counts in expenses everywhere; totals() reports it separately too, so
@@ -35,6 +39,18 @@ SPLIT_COLUMNS = ["transaction_id", "category", "amount"]
 LINE_COLUMNS = ["transaction_id", "date", "description", "category", "amount", "currency"]
 
 
+def _month(value) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def counted_date(real: pd.Timestamp, month: str | None) -> pd.Timestamp:
+    """`real` moved to `month`, keeping the day where that month has it (31 Jan -> 28 Feb)."""
+    if not month:
+        return real
+    period = pd.Period(month, freq="M")
+    return pd.Timestamp(period.year, period.month, min(real.day, period.days_in_month))
+
+
 def build_lines(transactions: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFrame:
     """Replace each split transaction by its split rows.
 
@@ -42,23 +58,31 @@ def build_lines(transactions: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFram
     as the transaction, negative the other way (e.g. on a repayment from a
     friend, "-40 Travel" is your share of a trip they paid). A transaction
     marked Split with no split rows (shouldn't happen) is kept as-is.
-    Lines get a `note`: the split part's note, if any.
+    Lines get a `note`: the split part's note, if any. A part with no `counts_in`
+    of its own follows the transaction's.
     """
+    if "counts_in" not in transactions:
+        transactions = transactions.assign(counts_in=None)
+    if "counts_in" not in splits:
+        splits = splits.assign(counts_in=None)
     is_split = transactions["category"] == SPLIT
     has_rows = transactions["transaction_id"].isin(splits["transaction_id"])
     expand = is_split & has_rows
 
-    plain = transactions.loc[~expand, LINE_COLUMNS].assign(note=None)
-    parents = transactions.loc[expand, ["transaction_id", "date", "description", "currency", "amount"]]
-    parents = parents.rename(columns={"amount": "parent_amount"})
+    plain = transactions.loc[~expand, LINE_COLUMNS + ["counts_in"]].assign(note=None)
+    parents = transactions.loc[expand, ["transaction_id", "date", "description", "currency", "amount", "counts_in"]]
+    parents = parents.rename(columns={"amount": "parent_amount", "counts_in": "parent_counts_in"})
     parts = splits.merge(parents, on="transaction_id", how="inner")
     parts["amount"] = np.sign(parts["parent_amount"].astype(float)) * parts["amount"].astype(float)
     if "note" not in parts:
         parts["note"] = None
 
-    lines = pd.concat([plain, parts[LINE_COLUMNS + ["note"]]], ignore_index=True)
+    parts["counts_in"] = [_month(own) or _month(parent) for own, parent in zip(parts["counts_in"], parts["parent_counts_in"])]
+
+    lines = pd.concat([plain, parts[LINE_COLUMNS + ["note", "counts_in"]]], ignore_index=True)
     lines["category"] = lines["category"].fillna(UNCATEGORIZED)
-    lines["date"] = pd.to_datetime(lines["date"])
+    lines["paid_on"] = pd.to_datetime(lines["date"])
+    lines["date"] = pd.to_datetime([counted_date(d, _month(m)) for d, m in zip(lines["paid_on"], lines["counts_in"])])
     lines["amount"] = lines["amount"].astype(float)
     return lines
 
@@ -197,6 +221,7 @@ def spending_lines(lines: pd.DataFrame) -> list[dict]:
         {
             "transaction_id": r.transaction_id,
             "date": r.date.date().isoformat(),
+            "paid_on": r.paid_on.date().isoformat(),
             "description": r.description,
             "category": r.category,
             "spent": _r(-r.value),
@@ -265,6 +290,7 @@ def occasional_lines(lines: pd.DataFrame, limit: int = 12) -> list[dict]:
         {
             "transaction_id": r.transaction_id,
             "date": r.date.date().isoformat(),
+            "paid_on": r.paid_on.date().isoformat(),
             "description": r.description,
             "category": r.category,
             "spent": _r(-r.value),
@@ -272,3 +298,65 @@ def occasional_lines(lines: pd.DataFrame, limit: int = 12) -> list[dict]:
         for r in biggest.itertuples(index=False)
         if r.value < 0
     ]
+
+
+# With fewer complete months the projection was far off when tested on past years
+# (one salary landing in the wrong month moves it a lot).
+MIN_MONTHS_FOR_PROJECTION = 6
+
+
+def year_end_projection(lines: pd.DataFrame, current_month: str) -> dict | None:
+    """Where this year's savings rate is heading: an estimate, not a forecast.
+
+    Known: the year's complete months, as they happened. For the months left:
+    - income as those months paid last year, because salaries don't arrive
+      evenly (e.g. January's can land in December). A month from before any
+      income was recorded uses this year's average instead.
+    - spending at this year's monthly average so far (trips included).
+
+    `lines` must include last year. None too early in the year to be meaningful.
+    """
+    year = int(current_month[:4])
+    per_month = {r["period"]: r for r in trend(lines, "%Y-%m")}
+    done = [p for p in per_month if p.startswith(f"{year}-") and p < current_month]
+    if not done:
+        return None
+    last_done = int(max(done)[5:])
+    if last_done < MIN_MONTHS_FOR_PROJECTION:
+        return None
+
+    def so_far(key: str) -> float:
+        return sum(per_month.get(f"{year}-{m:02d}", {}).get(key, 0.0) for m in range(1, last_done + 1))
+
+    income_months = [p for p, r in per_month.items() if r["income"] > 0]
+    first_income = min(income_months) if income_months else None
+    months_left = list(range(last_done + 1, 13))
+
+    income = so_far("income")
+    average_income = income / last_done
+    from_last_year = 0
+    for m in months_left:
+        same_month = f"{year - 1}-{m:02d}"
+        if first_income and same_month >= first_income:
+            income += per_month.get(same_month, {}).get("income", 0.0)
+            from_last_year += 1
+        else:
+            income += average_income
+    if income <= 0:
+        return None
+
+    average_expenses = so_far("expenses") / last_done
+    expenses = so_far("expenses") + average_expenses * len(months_left)
+    regular = so_far("regular_expenses") * 12 / last_done
+    return {
+        "year": str(year),
+        "months_known": last_done,
+        "months_left": len(months_left),
+        "income_from_last_year": from_last_year == len(months_left),
+        "income": _r(income),
+        "expenses": _r(expenses),
+        "net": _r(income + expenses),
+        "savings_rate": _rate(income + expenses, income),
+        "net_regular": _r(income + regular),
+        "savings_rate_regular": _rate(income + regular, income),
+    }
